@@ -95,5 +95,18 @@ describe('native tools', () => {
     expect(masked.tools.map(tool => tool.name)).toEqual(['read_file'])
     expect(masked.sections.some(section => section.name === 'antigravity:native-tools')).toBe(true)
     expect(masked.sections.some(section => section.name === 'tool:web_search')).toBe(false)
+    const guidance = masked.sections.find(section => section.name === 'antigravity:native-tools')?.text ?? ''
+    expect(guidance).toContain('This route has no image generation')
+    expect(guidance).not.toContain('Call generate_image only')
+  })
+
+  it('mentions generate_image only when native image is enabled', () => {
+    const masked = maskDshWebAssembly({
+      tools: [{ name: 'read_file' }],
+      sections: [{ name: 'other', text: 'ok' }],
+    }, true)
+    const guidance = masked.sections.find(section => section.name === 'antigravity:native-tools')?.text ?? ''
+    expect(guidance).toContain('Call generate_image only')
+    expect(guidance).not.toContain('This route has no image generation')
   })
 })

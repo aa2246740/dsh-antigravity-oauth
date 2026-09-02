@@ -63,6 +63,21 @@ function fakeSession(script: {
 }
 
 describe('AntigravityAdapter search', () => {
+  it('does not offer generate_image when native image is off, even for a kitten prompt', async () => {
+    const fake = fakeSession({
+      chat: [{ type: 'text', text: 'ok' }, { type: 'finish', reason: 'STOP' }],
+    })
+    const adapter = createAntigravityAdapter(fake.session, {
+      nativeTools: true,
+      nativeImage: false,
+      nativeSearch: true,
+    })
+    await collect(adapter.stream(options('给我生成一张小猫图')))
+    const names = fake.chatBodies[0]?.functions.map(tool => tool.name) ?? []
+    expect(names).toContain('search_web')
+    expect(names).not.toContain('generate_image')
+  })
+
   it('does not offer generate_image on a news turn', async () => {
     const fake = fakeSession({
       chat: [{ type: 'text', text: 'ok' }, { type: 'finish', reason: 'STOP' }],

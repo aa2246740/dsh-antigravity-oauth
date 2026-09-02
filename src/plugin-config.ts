@@ -15,6 +15,6 @@ export const Config: z<Config> = z.object({
   streamIdleTimeoutMs: z.number().min(1).default(STREAM_IDLE_TIMEOUT_MS),
   retryPolicy: RetryPolicySchema,
   nativeTools: z.boolean().default(true),
-  nativeImage: z.boolean().default(true),
+  nativeImage: z.boolean().default(false),
   nativeSearch: z.boolean().default(true),
 })

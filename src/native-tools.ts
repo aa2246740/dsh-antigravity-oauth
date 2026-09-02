@@ -10,8 +10,13 @@ const DSH_WEB_TOOL_NAME_SET = new Set<string>(DSH_WEB_TOOL_NAMES)
 const DSH_WEB_SECTION_NAME_SET = new Set<string>(DSH_WEB_SECTION_NAMES)
 const SEARCH_WEB_NAME_SET = new Set<string>([SEARCH_WEB_TOOL, 'web_search'])
 
-export const SEARCH_GUIDANCE =
-  'Use search_web for news and public-web facts. generate_image is only present when the latest user message asks for an image. Never call generate_image for news or search. Do not call web_search or web_fetch. Cloud Code Assist v1internal cannot mix built-in googleSearch with function tools, so search_web runs as a separate googleSearch-only request.'
+const SEARCH_ONLY_GUIDANCE =
+  'Use search_web for news and public-web facts. Do not call web_search, web_fetch, or generate_image. This route has no image generation. Cloud Code Assist v1internal cannot mix built-in googleSearch with function tools, so search_web runs as a separate googleSearch-only request.'
+
+const SEARCH_AND_IMAGE_GUIDANCE =
+  'Use search_web for news and public-web facts. Call generate_image only when the latest user message asks for an image. Never call generate_image for news or search. Do not call web_search or web_fetch. Cloud Code Assist v1internal cannot mix built-in googleSearch with function tools, so search_web runs as a separate googleSearch-only request.'
+
+export const SEARCH_GUIDANCE = SEARCH_ONLY_GUIDANCE
 
 const IMAGE_INTENT = new RegExp([
   '(?:生成|画|绘制|做|来)[一]?[张只个幅].{0,24}(?:图|图片|插画|海报|封面|照片|猫|狗)',
@@ -143,13 +148,16 @@ export function maskDshWebAssembly<
     tools: readonly { name: string }[]
     sections: readonly { name: string, text: string }[]
   },
->(assembly: T): T {
+>(assembly: T, image = false): T {
   return {
     ...assembly,
     tools: assembly.tools.filter(tool => !isDshWebToolName(tool.name)),
     sections: [
       ...assembly.sections.filter(section => !isDshWebSectionName(section.name)),
-      { name: 'antigravity:native-tools', text: SEARCH_GUIDANCE },
+      {
+        name: 'antigravity:native-tools',
+        text: image ? SEARCH_AND_IMAGE_GUIDANCE : SEARCH_ONLY_GUIDANCE,
+      },
     ],
   }
 }
