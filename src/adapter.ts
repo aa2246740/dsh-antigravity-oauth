@@ -56,6 +56,13 @@ function convertMessages(
   messages: GenerateOptions['messages'],
   thoughtSignatures: ReadonlyMap<string, string>,
 ): GeminiContent[] {
+  const toolNames = new Map<string, string>()
+  for (const message of messages) {
+    if (message.role !== 'assistant') continue
+    for (const block of message.content) {
+      if (block.type === 'tool-call') toolNames.set(block.id, block.name)
+    }
+  }
   const contents: GeminiContent[] = []
   for (const message of messages) {
     if (message.source.kind === 'tool') {
@@ -66,7 +73,7 @@ function convertMessages(
         role: 'user',
         parts: [{
           functionResponse: {
-            name: 'tool',
+            name: toolNames.get(block.toolCallId) ?? 'tool',
             id: block.toolCallId,
             response: { result: responseText },
           },

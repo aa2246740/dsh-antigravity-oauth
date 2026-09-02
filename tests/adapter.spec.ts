@@ -178,5 +178,10 @@ describe('AntigravityAdapter search', () => {
     }
     expect(call?.functionCall.name).toBe('skill')
     expect(call?.thoughtSignature).toBe('sig-abc')
+    const tool = contents.find(entry => entry.role === 'user' && entry.parts.some(part => 'functionResponse' in part))
+    const response = tool?.parts.find(part => 'functionResponse' in part) as {
+      functionResponse: { name: string }
+    }
+    expect(response?.functionResponse.name).toBe('skill')
   })
 })
