@@ -29,7 +29,7 @@
 |---|---|
 | 设置入口 | **Antigravity** |
 | Harness 路由 | `agy-google-antigravity` |
-| 公开模型 | `gemini-3.7-flash`、`gemini-3.5-flash` |
+| 公开模型 | `gemini-3.8-flash`、`gemini-3.7-flash`、`gemini-3.5-flash` |
 | 凭据文件 | `$DSH_HOME/.dsh-antigravity-oauth.json`（仅当前用户可读） |
 | 搜索 | `search_web` → **单独一轮** Cloud Code Assist `googleSearch` |
 | 生图 | **已删除。** 这条路由不会出图。 |

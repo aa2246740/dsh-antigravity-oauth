@@ -17,6 +17,9 @@ const WIRE_PROFILES: Record<string, { modelEnum?: string, maxOutputTokens: numbe
   'gemini-3.7-flash-low': { maxOutputTokens: 65_536 },
   'gemini-3.7-flash-medium': { maxOutputTokens: 65_536 },
   'gemini-3.7-flash-high': { maxOutputTokens: 65_536 },
+  'gemini-3.8-flash-low': { maxOutputTokens: 65_536 },
+  'gemini-3.8-flash-medium': { maxOutputTokens: 65_536 },
+  'gemini-3.8-flash-high': { maxOutputTokens: 65_536 },
 }
 
 function formatSignedDecimal(value: bigint): string {

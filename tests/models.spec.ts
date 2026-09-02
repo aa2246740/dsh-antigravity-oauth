@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { routeChatModel, thinkingLevelFor } from '../src/models.ts'
 
 describe('effort routing', () => {
+  it('maps gemini-3.8-flash low/medium/high onto wire ids', () => {
+    expect(routeChatModel('gemini-3.8-flash', 'low')).toBe('gemini-3.8-flash-low')
+    expect(routeChatModel('gemini-3.8-flash', 'medium')).toBe('gemini-3.8-flash-medium')
+    expect(routeChatModel('gemini-3.8-flash', 'high')).toBe('gemini-3.8-flash-high')
+    expect(thinkingLevelFor('gemini-3.8-flash', 'high')).toBe('HIGH')
+  })
+
   it('maps gemini-3.7-flash low/medium/high onto wire ids', () => {
     expect(routeChatModel('gemini-3.7-flash', 'low')).toBe('gemini-3.7-flash-low')
     expect(routeChatModel('gemini-3.7-flash', 'medium')).toBe('gemini-3.7-flash-medium')

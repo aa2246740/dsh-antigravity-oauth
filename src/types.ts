@@ -17,11 +17,14 @@ export type CcaSession = {
   lastGoodEndpoint: string
 }
 
-export type PublicModelId = 'gemini-3.7-flash' | 'gemini-3.5-flash'
+export type PublicModelId = 'gemini-3.8-flash' | 'gemini-3.7-flash' | 'gemini-3.5-flash'
 
 export type ReasoningEffort = 'low' | 'medium' | 'high'
 
 export type ChatWireModelId =
+  | 'gemini-3.8-flash-low'
+  | 'gemini-3.8-flash-medium'
+  | 'gemini-3.8-flash-high'
   | 'gemini-3.7-flash-low'
   | 'gemini-3.7-flash-medium'
   | 'gemini-3.7-flash-high'

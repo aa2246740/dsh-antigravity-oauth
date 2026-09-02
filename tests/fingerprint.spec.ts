@@ -21,6 +21,22 @@ describe('fingerprint lessons', () => {
     expect(authorizationUrl('s')).not.toContain('aicode')
   })
 
+  it('gemini-3.8-flash-medium has no model_enum and sends thinkingLevel', () => {
+    const session = createCcaSession()
+    const envelope = advanceEnvelope(session, 'gemini-3.8-flash-medium')
+    const body = buildCcaBody('proj', {
+      kind: 'chat',
+      model: 'gemini-3.8-flash-medium',
+      contents: [{ role: 'user', parts: [{ text: 'hi' }] }],
+      functions: [{ name: 'bash', description: 'run', parameters: { type: 'object' } }],
+      thinkingLevel: 'MEDIUM',
+    }, envelope)
+    expect(body.model).toBe('gemini-3.8-flash-medium')
+    expect(envelope.labels.model_enum).toBeUndefined()
+    const generation = body.request.generationConfig as { thinkingConfig: { thinkingLevel: string } }
+    expect(generation.thinkingConfig.thinkingLevel).toBe('MEDIUM')
+  })
+
   it('chat systemInstruction never contains You are Antigravity', () => {
     const session = createCcaSession()
     const envelope = advanceEnvelope(session, 'gemini-3.7-flash-medium')
