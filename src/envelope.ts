@@ -106,7 +106,7 @@ function functionTools(functions: readonly FunctionToolDeclaration[]): Record<st
       functionDeclarations: functions.map(tool => ({
         name: tool.name,
         description: tool.description,
-        parameters: tool.parameters,
+        parametersJsonSchema: tool.parameters,
       })),
     },
   ]

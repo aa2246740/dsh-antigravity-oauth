@@ -56,6 +56,10 @@ describe('fingerprint lessons', () => {
     }, envelope)
     const tools = body.request.tools as Array<Record<string, unknown>>
     expect(tools.some(tool => tool.googleSearch !== undefined)).toBe(true)
+    const decls = tools.find(tool => Array.isArray(tool.functionDeclarations))
+    const first = (decls?.functionDeclarations as Array<Record<string, unknown>>)[0]
+    expect(first).toHaveProperty('parametersJsonSchema')
+    expect(first).not.toHaveProperty('parameters')
   })
 })
 

@@ -23,6 +23,14 @@ describe('Gemini function schema', () => {
     expect(properties.window_id.nullable).toBe(true)
   })
 
+  it('drops non-string enum values the way OMP stringEnumsOnly does', () => {
+    const cleaned = sanitizeGeminiSchema({
+      type: 'string',
+      enum: [true, 'a', 1, 'b'],
+    })
+    expect(cleaned?.enum).toEqual(['a', 'b'])
+  })
+
   it('drops anyOf wrappers that produced the CCA 400 type-list payload', () => {
     const cleaned = sanitizeGeminiSchema({
       anyOf: [
