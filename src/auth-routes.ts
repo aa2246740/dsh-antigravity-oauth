@@ -82,6 +82,9 @@ export function registerAntigravityAuthRoutes(
             const challenge = await session.signIn()
             if (!isSafeAuthUrl(challenge.url)) throw new Error('authorization URL is outside Google accounts')
             json(res, 200, challenge)
+            void session.waitUntilSettled().then(async () => {
+              await notify()
+            })
           } catch (error: unknown) {
             json(res, 500, { error: safeMessage(error) })
           }

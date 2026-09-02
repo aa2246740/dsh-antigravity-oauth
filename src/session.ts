@@ -98,6 +98,10 @@ export class AntigravitySession {
     throw new Error('login did not produce an authorization URL')
   }
 
+  async waitUntilSettled(): Promise<void> {
+    await this.operation?.catch(() => undefined)
+  }
+
   async complete(raw: string): Promise<AntigravityAccountState> {
     const extracted = extractOAuthCode(raw)
     if (this.pendingState !== undefined && extracted.state !== undefined && extracted.state !== this.pendingState) {
@@ -105,12 +109,14 @@ export class AntigravitySession {
     }
     const credential = await completeOAuthLogin(extracted.code, this.fetchImpl)
     await this.store.write(credential)
-    this.stopCallbackServer()
     this.account = await this.readStored()
-    this.operation = undefined
-    this.cancellation = undefined
     this.pendingUrl = undefined
     this.pendingState = undefined
+    this.cancellation?.abort(new Error('Antigravity login completed'))
+    this.stopCallbackServer()
+    await this.waitUntilSettled()
+    this.operation = undefined
+    this.cancellation = undefined
     return this.account
   }
 

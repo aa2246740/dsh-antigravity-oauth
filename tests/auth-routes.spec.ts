@@ -22,4 +22,19 @@ describe('AntigravitySession login URL', () => {
       await session.dispose()
     }
   })
+
+  it('waitUntilSettled resolves after login is cancelled so route refresh can run', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-agy-auth-'))
+    const session = new AntigravitySession(new AntigravityCredentialStore(join(dir, 'auth.json')), async () => {
+      throw new Error('network disabled')
+    })
+    try {
+      await session.signIn()
+      const settled = session.waitUntilSettled()
+      await session.dispose()
+      await expect(settled).resolves.toBeUndefined()
+    } finally {
+      await session.dispose()
+    }
+  })
 })

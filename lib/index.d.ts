@@ -203,6 +203,7 @@ declare class AntigravitySession {
   signIn(): Promise<{
     url: string;
   }>;
+  waitUntilSettled(): Promise<void>;
   complete(raw: string): Promise<AntigravityAccountState>;
   signOut(): Promise<void>;
   dispose(): Promise<void>;
