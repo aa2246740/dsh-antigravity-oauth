@@ -45,21 +45,33 @@ describe('fingerprint lessons', () => {
     expect(url).not.toMatch(/:generateContent(\?|$)/)
   })
 
-  it('chat tools include googleSearch', () => {
+  it('does not mix googleSearch with functionDeclarations on v1internal', () => {
     const session = createCcaSession()
-    const envelope = advanceEnvelope(session, 'gemini-3.5-flash-low')
-    const body = buildCcaBody('proj', {
+    const withFunctions = advanceEnvelope(session, 'gemini-3.5-flash-low')
+    const mixed = buildCcaBody('proj', {
       kind: 'chat',
       model: 'gemini-3.5-flash-low',
       contents: [{ role: 'user', parts: [{ text: 'search this' }] }],
       functions: [{ name: 'read_file', description: 'Read', parameters: { type: 'object' } }],
-    }, envelope)
-    const tools = body.request.tools as Array<Record<string, unknown>>
-    expect(tools.some(tool => tool.googleSearch !== undefined)).toBe(true)
-    const decls = tools.find(tool => Array.isArray(tool.functionDeclarations))
+    }, withFunctions)
+    const mixedTools = mixed.request.tools as Array<Record<string, unknown>>
+    expect(mixedTools.some(tool => tool.googleSearch !== undefined)).toBe(false)
+    const decls = mixedTools.find(tool => Array.isArray(tool.functionDeclarations))
     const first = (decls?.functionDeclarations as Array<Record<string, unknown>>)[0]
     expect(first).toHaveProperty('parametersJsonSchema')
     expect(first).not.toHaveProperty('parameters')
+    const config = mixed.request.toolConfig as Record<string, unknown>
+    expect(config).not.toHaveProperty('includeServerSideToolInvocations')
+    expect(config).not.toHaveProperty('include_server_side_tool_invocations')
+
+    const searchOnly = buildCcaBody('proj', {
+      kind: 'chat',
+      model: 'gemini-3.5-flash-low',
+      contents: [{ role: 'user', parts: [{ text: 'search this' }] }],
+      functions: [],
+    }, advanceEnvelope(session, 'gemini-3.5-flash-low'))
+    const searchTools = searchOnly.request.tools as Array<Record<string, unknown>>
+    expect(searchTools).toEqual([{ googleSearch: {} }])
   })
 })
 

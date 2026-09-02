@@ -9,7 +9,7 @@ const DSH_WEB_TOOL_NAME_SET = new Set<string>(DSH_WEB_TOOL_NAMES)
 const DSH_WEB_SECTION_NAME_SET = new Set<string>(DSH_WEB_SECTION_NAMES)
 
 export const SEARCH_GUIDANCE =
-  'This turn already includes Google Search grounding. Do not call web_search or web_fetch — those DSH tools are not available on this route. Use generate_image when the user asks for an image.'
+  'Do not call web_search or web_fetch. Those DSH tools are not available on this route. Cloud Code Assist v1internal cannot mix built-in googleSearch with function tools. Use generate_image when the user asks for an image.'
 
 export const GENERATE_IMAGE_DECLARATION: FunctionToolDeclaration = {
   name: GENERATE_IMAGE_TOOL,

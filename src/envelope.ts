@@ -101,7 +101,6 @@ function systemInstruction(text: string, role: 'user' | undefined): { role?: 'us
 function functionTools(functions: readonly FunctionToolDeclaration[]): Record<string, unknown>[] {
   if (functions.length === 0) return [{ googleSearch: {} }]
   return [
-    { googleSearch: {} },
     {
       functionDeclarations: functions.map(tool => ({
         name: tool.name,
