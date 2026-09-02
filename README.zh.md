@@ -1,7 +1,149 @@
 # dsh-antigravity-oauth
 
-DeepSeek Harness 的独立 Gemini Cloud Code Assist 登录插件。
+[English](README.md) | 中文
 
-凭据写在 DSH home 旁的 `.dsh-antigravity-oauth.json`，不读写官方 CLI 登录文件。Harness 路由是 `agy-google-antigravity`。公开模型是 `gemini-3.7-flash` 和 `gemini-3.5-flash`。默认只提供 `search_web`，不提供 Google 生图。
+给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 用的**独立、非官方** Gemini Cloud Code Assist 登录插件。
 
-在设置里登录。连接前请阅读 Google 服务条款。
+这是社区插件。**不是** Google Antigravity 官方产品，**不是** 公开 Gemini API，**也不是** DeepSeek 官方功能。
+
+---
+
+## 警告 — 登录前先读完
+
+**用这个插件，Google 账号有被封、被限、被踢下线的真实风险。** 封了没人能救。
+
+1. **非官方 Cloud Code Assist。** 登录时会伪装成 Antigravity 桌面客户端（`ideType: ANTIGRAVITY`），请求打到 `daily-cloudcode-pa.googleapis.com` 的 `/v1internal:streamGenerateContent`。这**不是** Google AI Studio，**不是** Vertex，**也不是** Google 支持的第三方接入。Google 随时可以改接口、限流或关掉这条路。
+2. **你接受的是 Google 的条款，不是我们的。** 连接前请阅读 [Google 服务条款](https://policies.google.com/terms) 以及 Antigravity / Gemini 产品条款。条款不允许就不要登录。
+3. **不要用丢不起的号。** 尽量用备用 Google 账号。不要用多账号轮询躲额度。本插件故意只支持单账号。
+4. **没有担保。** 今天能聊，不代表明天路由、模型、额度或账号还在。
+5. **不要贴机密。** Issue、聊天、截图里不要出现 `.dsh-antigravity-oauth.json`、refresh token、回调 URL 或授权码。
+
+若你需要受支持的 Gemini 接入，请走 Google 官方 API / AI Studio。不要用这个插件。
+
+---
+
+## 它做什么
+
+| | |
+|---|---|
+| 设置入口 | **Antigravity** |
+| Harness 路由 | `agy-google-antigravity` |
+| 公开模型 | `gemini-3.7-flash`、`gemini-3.5-flash` |
+| 凭据文件 | `$DSH_HOME/.dsh-antigravity-oauth.json`（仅当前用户可读） |
+| 搜索 | `search_web` → **单独一轮** Cloud Code Assist `googleSearch` |
+| 生图 | **已删除。** 这条路由不会出图。 |
+
+插件不读不写官方 CLI 登录文件（`~/.gemini`、Antigravity 应用数据、`dsh-oauth-login` 的 store、Pi Agent 的 `auth.json`）。
+
+它**不是** `dsh-oauth-login`。不要把两个插件并在一起。
+
+---
+
+## 它不做什么
+
+- Claude、GPT-OSS、Gemini 3.6 / 3.1 Pro，以及上面两个 Flash 之外的任何模型
+- Google 生图（`generate_image` 会被丢掉）
+- 多账号轮换或额度池
+- 官方 Gemini API Key
+- 本路由上 DSH 默认的 `web_search` / `web_fetch`（会藏起来，避免盖住 Cloud Code Assist 搜索）
+
+---
+
+## 安装
+
+需要 Node **22.19+**，以及能跑起来的 DeepSeek Harness（本仓库按 **0.1.0-rc.8** 构建）。
+
+```sh
+git clone https://github.com/aa2246740/dsh-antigravity-oauth.git
+cd dsh-antigravity-oauth
+npm install
+npm run build
+```
+
+`file:` 前缀必须留着。本插件把 DSH 运行时当 peer dependency，写成 `./dsh-antigravity-oauth` 往往解析不到依赖。
+
+```sh
+dsh plugin --profile web add file:./dsh-antigravity-oauth
+```
+
+重启 Web Host（`dsh web` / DSH.app）。打开 **设置 → Antigravity**。在**新对话**里选路由 `agy-google-antigravity`。
+
+---
+
+## 登录
+
+1. 设置 → Antigravity → **登录**。
+2. 在浏览器里走完 Google 授权。
+3. 若窗口没有自动返回，把跳转 URL 或授权码贴进表单。
+
+OAuth 回调监听 `http://127.0.0.1:51121/oauth-callback`。这里的桌面 OAuth **不用** PKCE。
+
+---
+
+## 搜索、工具、以及坏掉的对话
+
+Cloud Code Assist **v1internal 不能**在同一次请求里同时带内置 `googleSearch` 和 `functionDeclarations`。所以插件会：
+
+- 给模型看 `search_web`
+- 搜索单独走一轮只有 googleSearch 的请求
+- 普通工具（`bash`、`skill` 等）留在主回合
+
+**某一轮 400、TRANSPORT 连打、或留下未完成的 tool call：开新对话。不要 Continue 那个会话。** 带伤的 transcript 会一直失败。
+
+常见伤：
+
+- `Function call is missing a thought_signature`
+- `functionResponse` 上的 `INVALID_ARGUMENT`
+- 先 400、再被 DSH 重试成 `TRANSPORT`
+
+Gemini 3.7 Flash High 在后续 `functionCall` 上要带 `thought_signature`。本插件会保存并回放。但 400 发生在握手之前的会话仍然是死的 — 开新对话。
+
+---
+
+## 生图
+
+这条目录上的 Google 生图已经删掉，原因是：
+
+- `gemini-3-pro-image` 不在这份 Cloud Code Assist 目录里（404）
+- `gemini-3.1-flash-image` 有**单独的、非常小的**额度，和 Gemini 5 小时条不是一回事
+
+不要指望 `agy-google-antigravity` 出图。
+
+---
+
+## 代理
+
+CCA 请求会通过 undici `ProxyAgent` 走 `HTTPS_PROXY` / `HTTP_PROXY` / `https_proxy` / `http_proxy`。Node 22+ 常常忽略这些变量，除非进程还设了 `NODE_USE_ENV_PROXY=1`；本插件不依赖那个开关。
+
+本机 HTTP 代理例如 `http://127.0.0.1:45678`，在直连 Google 不通时够用。纯 SOCKS 端口不行。
+
+---
+
+## 配置
+
+可选，写在 `llm-antigravity-oauth` 这一行：
+
+```yaml
+- id: llm-antigravity-oauth
+  name: dsh-antigravity-oauth
+  config:
+    nativeTools: true
+    nativeSearch: true
+```
+
+| 项 | 默认 | 含义 |
+|---|---|---|
+| `nativeSearch` | `true` | 提供 `search_web`，并拦截到 googleSearch |
+| `nativeTools` | `true` | 转发 DSH 的 function tools（会先清洗 schema） |
+| `streamIdleTimeoutMs` | `300000` | 流空闲超时 |
+| `retryPolicy` | Harness 默认 | 官方 `dsh-llm` 重试策略 |
+
+`nativeSearch: false` 会关掉 Cloud Code Assist 搜索。它不会把 DSH 的 `web_search` 还给这条路由。
+
+---
+
+## 许可
+
+Apache-2.0。
+
+与 Google、DeepSeek、Antigravity IDE 均无隶属关系。使用风险自负。
