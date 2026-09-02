@@ -1,0 +1,5 @@
+id: llm-antigravity-oauth
+entry: src/index.ts
+marker: "[my-plugins/dsh-antigravity-oauth] loaded"
+kind: function
+profile: web

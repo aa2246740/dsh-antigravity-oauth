@@ -1,0 +1,43 @@
+export const en = {
+  nav: 'Antigravity',
+  title: 'Google Antigravity',
+  tos: 'Unofficial Cloud Code Assist login. Review Google Terms of Service before signing in. Credentials stay in DSH’s private store, not in official CLI files.',
+  loadingAccount: 'Loading account…',
+  signedOut: 'Not signed in',
+  signingIn: 'Waiting for authorization…',
+  signedIn: 'Signed in',
+  login: 'Sign in',
+  loginAgain: 'Sign in again',
+  logout: 'Sign out',
+  working: 'Working…',
+  openUrl: 'Authorize',
+  completeHelp: 'If the browser window does not return, paste the redirect URL or authorization code.',
+  completePlaceholder: 'Paste redirect URL or code',
+  complete: 'Finish sign-in',
+  requestFailed: 'The login request failed.',
+  email: 'Account',
+  project: 'Project',
+} as const
+
+export type AntigravityKey = keyof typeof en
+
+export const zh: { [Key in AntigravityKey]: string } = {
+  nav: 'Antigravity',
+  title: 'Google Antigravity',
+  tos: '非官方 Cloud Code Assist 登录。登录前请阅读 Google 服务条款。凭据只保存在 DSH 的私有文件中，不会写入官方 CLI 登录文件。',
+  loadingAccount: '正在加载账户…',
+  signedOut: '尚未登录',
+  signingIn: '正在等待授权…',
+  signedIn: '已登录',
+  login: '登录',
+  loginAgain: '重新登录',
+  logout: '退出',
+  working: '处理中…',
+  openUrl: '授权',
+  completeHelp: '如果浏览器没有自动返回，请粘贴跳转 URL 或授权码。',
+  completePlaceholder: '粘贴跳转 URL 或授权码',
+  complete: '完成登录',
+  requestFailed: '登录请求失败。',
+  email: '账号',
+  project: '项目',
+}
