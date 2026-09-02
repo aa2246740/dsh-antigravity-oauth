@@ -269,34 +269,44 @@ export class AntigravityAdapter extends LlmAdapter {
       }
 
       if (pendingImages.length > 0) {
-        const oauth = await this.session.refreshIfNeeded()
-        if (oauth === undefined) {
-          throw new LlmError(
-            'Antigravity is not connected. Open Settings and sign in.',
-            'MISSING_CREDENTIAL',
-          )
-        }
-        for (const image of pendingImages) {
-          for await (const event of this.session.cca.image(oauth, { kind: 'image', ...image }, options.signal)) {
-            if (event.type === 'inlineImage') {
-              yield* closeThought()
-              yield* closeText()
-              yield* this.emitImage(index, event.mimeType, event.data, attachments)
-              index += 1
-            }
-            if (event.type === 'text') {
-              yield* closeThought()
-              if (text.length === 0) yield { type: 'block-start', index, blockType: 'text' }
-              text += event.text
-              yield { type: 'text-delta', index, text: event.text }
-            }
-            if (event.type === 'usage') {
-              usage = {
-                inputTokens: (usage?.inputTokens ?? 0) + event.usage.inputTokens,
-                outputTokens: (usage?.outputTokens ?? 0) + event.usage.outputTokens,
+        try {
+          const oauth = await this.session.refreshIfNeeded()
+          if (oauth === undefined) {
+            throw new LlmError(
+              'Antigravity is not connected. Open Settings and sign in.',
+              'MISSING_CREDENTIAL',
+            )
+          }
+          for (const image of pendingImages) {
+            for await (const event of this.session.cca.image(oauth, { kind: 'image', ...image }, options.signal)) {
+              if (event.type === 'inlineImage') {
+                yield* closeThought()
+                yield* closeText()
+                yield* this.emitImage(index, event.mimeType, event.data, attachments)
+                index += 1
+              }
+              if (event.type === 'text') {
+                yield* closeThought()
+                if (text.length === 0) yield { type: 'block-start', index, blockType: 'text' }
+                text += event.text
+                yield { type: 'text-delta', index, text: event.text }
+              }
+              if (event.type === 'usage') {
+                usage = {
+                  inputTokens: (usage?.inputTokens ?? 0) + event.usage.inputTokens,
+                  outputTokens: (usage?.outputTokens ?? 0) + event.usage.outputTokens,
+                }
               }
             }
           }
+        } catch (error: unknown) {
+          if (pendingSearches.length === 0) throw error
+          const message = error instanceof Error ? error.message : String(error)
+          yield* closeThought()
+          if (text.length === 0) yield { type: 'block-start', index, blockType: 'text' }
+          const note = `Image generation failed. ${message.slice(0, 240)}\n`
+          text += note
+          yield { type: 'text-delta', index, text: note }
         }
       }
 

@@ -11,7 +11,7 @@ const DSH_WEB_SECTION_NAME_SET = new Set<string>(DSH_WEB_SECTION_NAMES)
 const SEARCH_WEB_NAME_SET = new Set<string>([SEARCH_WEB_TOOL, 'web_search'])
 
 export const SEARCH_GUIDANCE =
-  'Use search_web to search the public web. Use generate_image when the user asks for an image. Do not call web_search or web_fetch. Those DSH tools are not available on this route. Cloud Code Assist v1internal cannot mix built-in googleSearch with function tools, so search_web runs as a separate googleSearch-only request.'
+  'Use search_web to search the public web. Call generate_image only when the latest user message asks for an image. Do not call generate_image for news or search. Do not call web_search or web_fetch. Cloud Code Assist v1internal cannot mix built-in googleSearch with function tools, so search_web runs as a separate googleSearch-only request.'
 
 export const GENERATE_IMAGE_DECLARATION: FunctionToolDeclaration = {
   name: GENERATE_IMAGE_TOOL,
