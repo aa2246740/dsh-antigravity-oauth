@@ -63,6 +63,7 @@ export function apply(ctx: Context, config: Config): void {
     createAntigravityAdapter(session, {
       nativeTools: config.nativeTools !== false,
       nativeImage: config.nativeImage !== false,
+      nativeSearch: config.nativeSearch !== false,
       streamIdleTimeoutMs: config.streamIdleTimeoutMs,
       resolveAttachments: () => ctx.get('attachments'),
     }),

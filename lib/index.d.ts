@@ -8,11 +8,12 @@ interface Config {
   retryPolicy?: RetryPolicyConfig;
   nativeTools?: boolean;
   nativeImage?: boolean;
+  nativeSearch?: boolean;
 }
 declare const Config: z<Config>;
 //#endregion
 //#region src/types.d.ts
-type CcaKind = 'chat' | 'image';
+type CcaKind = 'chat' | 'image' | 'search';
 type AntigravityOAuth = {
   type: 'oauth';
   access: string;
@@ -80,7 +81,13 @@ type ImageGenerateInput = {
     data: string;
   }[];
 };
-type CcaGenerateInput = ChatGenerateInput | ImageGenerateInput;
+type SearchGenerateInput = {
+  kind: 'search';
+  model: ChatWireModelId;
+  query: string;
+  thinkingLevel?: 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH';
+};
+type CcaGenerateInput = ChatGenerateInput | ImageGenerateInput | SearchGenerateInput;
 type CcaUsage = {
   inputTokens: number;
   outputTokens: number;
@@ -164,6 +171,7 @@ declare class CcaClient {
   private lastExecutionId;
   constructor(options: CcaClientOptions);
   chat(oauth: AntigravityOAuth, input: ChatGenerateInput, signal?: AbortSignal): AsyncIterable<CcaEvent>;
+  search(oauth: AntigravityOAuth, input: SearchGenerateInput, signal?: AbortSignal): AsyncIterable<CcaEvent>;
   image(oauth: AntigravityOAuth, input: ImageGenerateInput, signal?: AbortSignal): AsyncIterable<CcaEvent>;
   private endpoints;
   private headers;
@@ -218,6 +226,7 @@ declare class AntigravitySession {
 interface AntigravityAdapterOptions {
   nativeTools: boolean;
   nativeImage: boolean;
+  nativeSearch: boolean;
   streamIdleTimeoutMs?: number;
   resolveAttachments?: () => AttachmentStore | undefined;
 }

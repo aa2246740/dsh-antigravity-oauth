@@ -1,4 +1,4 @@
-export type CcaKind = 'chat' | 'image'
+export type CcaKind = 'chat' | 'image' | 'search'
 
 export type AntigravityOAuth = {
   type: 'oauth'
@@ -71,7 +71,14 @@ export type ImageGenerateInput = {
   inputImages?: readonly { mimeType: string, data: string }[]
 }
 
-export type CcaGenerateInput = ChatGenerateInput | ImageGenerateInput
+export type SearchGenerateInput = {
+  kind: 'search'
+  model: ChatWireModelId
+  query: string
+  thinkingLevel?: 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH'
+}
+
+export type CcaGenerateInput = ChatGenerateInput | ImageGenerateInput | SearchGenerateInput
 
 export type CcaUsage = {
   inputTokens: number

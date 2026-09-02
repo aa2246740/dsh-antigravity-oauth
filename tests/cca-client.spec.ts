@@ -173,4 +173,34 @@ describe('CcaClient', () => {
     expect(models).toContain('gemini-3.1-flash-image')
     expect(events.some(event => event.type === 'inlineImage' && event.data === 'bbbb')).toBe(true)
   })
+
+  it('search method posts googleSearch without functionDeclarations', async () => {
+    let body: Record<string, unknown> | undefined
+    const client = new CcaClient({
+      session: createCcaSession('https://daily-cloudcode-pa.googleapis.com'),
+      fetch: async (input, init) => {
+        body = JSON.parse(String(init?.body)) as Record<string, unknown>
+        return sseResponse([{
+          response: {
+            candidates: [{ content: { parts: [{ text: 'grounded' }] }, finishReason: 'STOP' }],
+          },
+        }], String(input))
+      },
+    })
+    const events: CcaEvent[] = []
+    for await (const event of client.search(oauth, {
+      kind: 'search',
+      model: 'gemini-3.7-flash-high',
+      query: 'kitten news',
+    })) {
+      events.push(event)
+    }
+    const request = body?.request as {
+      sessionId?: string
+      tools: Array<Record<string, unknown>>
+    }
+    expect(request.sessionId).toBeUndefined()
+    expect(request.tools).toEqual([{ googleSearch: {} }])
+    expect(events.some(event => event.type === 'text' && event.text === 'grounded')).toBe(true)
+  })
 })

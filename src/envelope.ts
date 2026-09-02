@@ -211,14 +211,45 @@ export function buildImageBody(
   }
 }
 
+export function buildSearchBody(
+  projectId: string,
+  input: Extract<CcaGenerateInput, { kind: 'search' }>,
+  now = Date.now(),
+): CcaRequestBody {
+  const profile = WIRE_PROFILES[input.model]
+  const generationConfig: Record<string, unknown> = {
+    maxOutputTokens: profile?.maxOutputTokens ?? 65_536,
+  }
+  if (input.thinkingLevel !== undefined) {
+    generationConfig.thinkingConfig = {
+      includeThoughts: true,
+      thinkingLevel: input.thinkingLevel,
+    }
+  } else {
+    generationConfig.thinkingConfig = { includeThoughts: true }
+  }
+  return {
+    project: projectId,
+    model: input.model,
+    request: {
+      contents: [{ role: 'user', parts: [{ text: input.query }] }],
+      generationConfig,
+      tools: [{ googleSearch: {} }],
+    },
+    requestType: 'agent',
+    userAgent: 'antigravity',
+    requestId: imageRequestId(now),
+  }
+}
+
 export function buildCcaBody(
   projectId: string,
   input: CcaGenerateInput,
   envelope: RequestEnvelope,
 ): CcaRequestBody {
-  return input.kind === 'chat'
-    ? buildChatBody(projectId, input, envelope)
-    : buildImageBody(projectId, input)
+  if (input.kind === 'image') return buildImageBody(projectId, input)
+  if (input.kind === 'search') return buildSearchBody(projectId, input)
+  return buildChatBody(projectId, input, envelope)
 }
 
 

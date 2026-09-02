@@ -36,13 +36,14 @@ describe('native tools', () => {
     expect((tool?.parameters.properties as { title: { type: string } }).title.type).toBe('string')
   })
 
-  it('adds generate_image and keeps googleSearch on the CCA function list separately', () => {
+  it('adds generate_image and search_web, hiding DSH web_search', () => {
     const functions = ccaFunctionDeclarations(
       [{ name: 'web_search', description: 'search', parameters: {} }, { name: 'read_file', description: 'read', parameters: {} }],
       true,
     )
     expect(functions.some(tool => tool.name === 'web_search')).toBe(false)
     expect(functions.some(tool => tool.name === GENERATE_IMAGE_TOOL)).toBe(true)
+    expect(functions.some(tool => tool.name === 'search_web')).toBe(true)
     expect(functions.some(tool => tool.name === 'read_file')).toBe(true)
   })
 

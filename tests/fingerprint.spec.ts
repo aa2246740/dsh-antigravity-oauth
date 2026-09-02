@@ -155,4 +155,21 @@ describe('golden request shapes', () => {
     const config = body.request.generationConfig as { imageConfig: { aspectRatio: string } }
     expect(config.imageConfig).toEqual({ aspectRatio: '1:1' })
   })
+
+  it('search request is googleSearch-only and stays off the chat session', () => {
+    const session = createCcaSession()
+    session.sessionId = '-chat-session'
+    const envelope = advanceEnvelope(session, 'gemini-3.7-flash-high', 1, 'exec-chat')
+    const body = buildCcaBody('proj', {
+      kind: 'search',
+      model: 'gemini-3.7-flash-high',
+      query: 'what is nano banana pro model id',
+    }, envelope)
+    expect(body.request.sessionId).toBeUndefined()
+    expect(body.request.labels).toBeUndefined()
+    expect(JSON.stringify(body)).not.toContain('exec-chat')
+    const tools = body.request.tools as Array<Record<string, unknown>>
+    expect(tools).toEqual([{ googleSearch: {} }])
+    expect(JSON.stringify(tools)).not.toContain('functionDeclarations')
+  })
 })

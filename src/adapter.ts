@@ -19,13 +19,20 @@ import {
   routeChatModel,
   thinkingLevelFor,
 } from './models.ts'
-import { ccaFunctionDeclarations, GENERATE_IMAGE_TOOL, parseGenerateImageArgs } from './native-tools.ts'
+import {
+  ccaFunctionDeclarations,
+  GENERATE_IMAGE_TOOL,
+  isSearchWebToolName,
+  parseGenerateImageArgs,
+  parseSearchWebArgs,
+} from './native-tools.ts'
 import type { AntigravitySession } from './session.ts'
 import type { CcaEvent, FunctionToolDeclaration, GeminiContent, GeminiPart, ReasoningEffort } from './types.ts'
 
 export interface AntigravityAdapterOptions {
   nativeTools: boolean
   nativeImage: boolean
+  nativeSearch: boolean
   streamIdleTimeoutMs?: number
   resolveAttachments?: () => AttachmentStore | undefined
 }
@@ -91,9 +98,13 @@ function convertMessages(messages: GenerateOptions['messages']): GeminiContent[]
   return contents
 }
 
-function functionsFor(options: GenerateOptions, nativeImage: boolean): FunctionToolDeclaration[] {
+function functionsFor(
+  options: GenerateOptions,
+  nativeImage: boolean,
+  nativeSearch: boolean,
+): FunctionToolDeclaration[] {
   if (options.purpose === 'compaction' || options.purpose === 'session-title') return []
-  return ccaFunctionDeclarations(options.tools, nativeImage)
+  return ccaFunctionDeclarations(options.tools, nativeImage, nativeSearch)
 }
 
 export class AntigravityAdapter extends LlmAdapter {
@@ -155,7 +166,7 @@ export class AntigravityAdapter extends LlmAdapter {
     }
     const effort = effortOf(options)
     const wire = routeChatModel(options.model, effort)
-    const functions = functionsFor(options, this.options.nativeImage)
+    const functions = functionsFor(options, this.options.nativeImage, this.options.nativeSearch)
     const events = this.session.cca.chat(oauth, {
       kind: 'chat',
       model: wire,
@@ -177,6 +188,7 @@ export class AntigravityAdapter extends LlmAdapter {
     let finish: string | undefined
     const toolNames: string[] = []
     const pendingImages: Array<{ prompt: string, aspectRatio?: string, imageSize?: string }> = []
+    const pendingSearches: string[] = []
     const attachments = this.options.resolveAttachments?.()
     const idleMs = this.options.streamIdleTimeoutMs ?? STREAM_IDLE_TIMEOUT_MS
     const watchdog = options.signal === undefined
@@ -229,6 +241,10 @@ export class AntigravityAdapter extends LlmAdapter {
             pendingImages.push(parseGenerateImageArgs(event.args))
             continue
           }
+          if (isSearchWebToolName(event.name) && this.options.nativeSearch) {
+            pendingSearches.push(parseSearchWebArgs(event.args))
+            continue
+          }
           const id = CallId(event.id ?? `call_${index}`)
           const args = JSON.stringify(event.args)
           yield { type: 'block-start', index, blockType: 'tool-call' }
@@ -267,6 +283,50 @@ export class AntigravityAdapter extends LlmAdapter {
               yield* closeText()
               yield* this.emitImage(index, event.mimeType, event.data, attachments)
               index += 1
+            }
+            if (event.type === 'text') {
+              yield* closeThought()
+              if (text.length === 0) yield { type: 'block-start', index, blockType: 'text' }
+              text += event.text
+              yield { type: 'text-delta', index, text: event.text }
+            }
+            if (event.type === 'usage') {
+              usage = {
+                inputTokens: (usage?.inputTokens ?? 0) + event.usage.inputTokens,
+                outputTokens: (usage?.outputTokens ?? 0) + event.usage.outputTokens,
+              }
+            }
+          }
+        }
+      }
+
+      if (pendingSearches.length > 0) {
+        const oauth = await this.session.refreshIfNeeded()
+        if (oauth === undefined) {
+          throw new LlmError(
+            'Antigravity is not connected. Open Settings and sign in.',
+            'MISSING_CREDENTIAL',
+          )
+        }
+        const effort = effortOf(options)
+        if (!isPublicModelId(options.model)) {
+          throw new LlmError(`unknown Antigravity model "${options.model}"`, 'UNKNOWN_MODEL')
+        }
+        const searchModel = options.model
+        for (const query of pendingSearches) {
+          for await (const event of this.session.cca.search(oauth, {
+            kind: 'search',
+            model: routeChatModel(searchModel, effort),
+            query,
+            ...thinkingLevelFor(searchModel, effort) === undefined
+              ? {}
+              : { thinkingLevel: thinkingLevelFor(searchModel, effort) },
+          }, options.signal)) {
+            if (event.type === 'thought') {
+              yield* closeText()
+              if (thought.length === 0) yield { type: 'block-start', index, blockType: 'reasoning' }
+              thought += event.text
+              yield { type: 'reasoning-delta', index, text: event.text }
             }
             if (event.type === 'text') {
               yield* closeThought()

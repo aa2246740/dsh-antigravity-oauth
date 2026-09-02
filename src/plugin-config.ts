@@ -8,6 +8,7 @@ export interface Config {
   retryPolicy?: RetryPolicyConfig
   nativeTools?: boolean
   nativeImage?: boolean
+  nativeSearch?: boolean
 }
 
 export const Config: z<Config> = z.object({
@@ -15,4 +16,5 @@ export const Config: z<Config> = z.object({
   retryPolicy: RetryPolicySchema,
   nativeTools: z.boolean().default(true),
   nativeImage: z.boolean().default(true),
+  nativeSearch: z.boolean().default(true),
 })

@@ -1,5 +1,5 @@
 import { CCA_ENDPOINTS, IMAGE_MODEL, IMAGE_MODEL_FALLBACKS } from './ids.ts'
-import { advanceEnvelope, buildChatBody, buildImageBody, streamGenerateContentUrl } from './envelope.ts'
+import { advanceEnvelope, buildChatBody, buildImageBody, buildSearchBody, streamGenerateContentUrl } from './envelope.ts'
 import type { CcaRequestBody } from './envelope.ts'
 import { parseCcaChunk, readSseJson } from './sse.ts'
 import type {
@@ -10,6 +10,7 @@ import type {
   ChatGenerateInput,
   ImageGenerateInput,
   ImageWireModelId,
+  SearchGenerateInput,
 } from './types.ts'
 import { antigravityUserAgent } from './user-agent.ts'
 
@@ -67,6 +68,10 @@ export class CcaClient {
     yield* this.generate(oauth, input, signal)
   }
 
+  async *search(oauth: AntigravityOAuth, input: SearchGenerateInput, signal?: AbortSignal): AsyncIterable<CcaEvent> {
+    yield* this.generate(oauth, input, signal)
+  }
+
   async *image(oauth: AntigravityOAuth, input: ImageGenerateInput, signal?: AbortSignal): AsyncIterable<CcaEvent> {
     let lastError: Error | undefined
     for (const model of imageModels(input.model)) {
@@ -105,7 +110,9 @@ export class CcaClient {
   ): AsyncIterable<CcaEvent> {
     const body = input.kind === 'image'
       ? buildImageBody(oauth.projectId, input, this.now())
-      : buildChatBody(oauth.projectId, input, advanceEnvelope(this.session, input.model, this.now(), this.lastExecutionId))
+      : input.kind === 'search'
+        ? buildSearchBody(oauth.projectId, input, this.now())
+        : buildChatBody(oauth.projectId, input, advanceEnvelope(this.session, input.model, this.now(), this.lastExecutionId))
     const endpoints = this.endpoints()
     let lastError: Error | undefined
     for (let index = 0; index < endpoints.length; index += 1) {
@@ -172,5 +179,15 @@ export function inspectImageRequest(projectId: string, input: ImageGenerateInput
   return {
     url: streamGenerateContentUrl(session.lastGoodEndpoint),
     body: buildImageBody(projectId, input, now),
+  }
+}
+
+export function inspectSearchRequest(projectId: string, input: SearchGenerateInput, session: CcaSession, now = Date.now()): {
+  url: string
+  body: CcaRequestBody
+} {
+  return {
+    url: streamGenerateContentUrl(session.lastGoodEndpoint),
+    body: buildSearchBody(projectId, input, now),
   }
 }
