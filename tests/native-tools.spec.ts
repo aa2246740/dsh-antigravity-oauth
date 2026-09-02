@@ -16,6 +16,26 @@ describe('native tools', () => {
     expect(kept.map(tool => tool.name)).toEqual(['read_file'])
   })
 
+  it('sanitizes forwarded DSH tool parameters before they hit CCA', () => {
+    const functions = ccaFunctionDeclarations(
+      [{
+        name: 'cua_list_windows',
+        description: 'list',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: ['string', 'null'] },
+          },
+        },
+      }],
+      false,
+    )
+    const tool = functions.find(entry => entry.name === 'cua_list_windows')
+    const dump = JSON.stringify(tool?.parameters)
+    expect(dump).not.toMatch(/"type":\[/)
+    expect((tool?.parameters.properties as { title: { type: string } }).title.type).toBe('string')
+  })
+
   it('adds generate_image and keeps googleSearch on the CCA function list separately', () => {
     const functions = ccaFunctionDeclarations(
       [{ name: 'web_search', description: 'search', parameters: {} }, { name: 'read_file', description: 'read', parameters: {} }],

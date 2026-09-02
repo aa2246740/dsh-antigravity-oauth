@@ -1,3 +1,4 @@
+import { sanitizeGeminiParameters } from './schema.ts'
 import type { FunctionToolDeclaration } from './types.ts'
 
 export const DSH_WEB_TOOL_NAMES = ['web_search', 'web_fetch'] as const
@@ -59,7 +60,7 @@ export function ccaFunctionDeclarations(
     .map(tool => ({
       name: tool.name,
       description: tool.description,
-      parameters: tool.parameters,
+      parameters: sanitizeGeminiParameters(tool.parameters),
     }))
   if (image) kept.push(GENERATE_IMAGE_DECLARATION)
   return kept
