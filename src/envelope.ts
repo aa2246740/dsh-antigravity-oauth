@@ -1,11 +1,10 @@
 import { randomBytes, randomUUID } from 'node:crypto'
-import { DAILY_ENDPOINT, IMAGE_MODEL } from './ids.ts'
+import { DAILY_ENDPOINT } from './ids.ts'
 import type {
   CcaGenerateInput,
   CcaSession,
   ChatGenerateInput,
   FunctionToolDeclaration,
-  GeminiContent,
 } from './types.ts'
 
 const INT63_MASK = (1n << 63n) - 1n
@@ -18,21 +17,7 @@ const WIRE_PROFILES: Record<string, { modelEnum?: string, maxOutputTokens: numbe
   'gemini-3.7-flash-low': { maxOutputTokens: 65_536 },
   'gemini-3.7-flash-medium': { maxOutputTokens: 65_536 },
   'gemini-3.7-flash-high': { maxOutputTokens: 65_536 },
-  'gemini-3-pro-image': { maxOutputTokens: 65_536 },
-  'gemini-3.1-flash-image': { maxOutputTokens: 65_536 },
-  'gemini-3-pro-image-preview': { maxOutputTokens: 65_536 },
 }
-
-const IMAGE_SYSTEM_INSTRUCTION =
-  'You are an AI image generator. Generate images based on user descriptions. Focus on creating high-quality, visually appealing images that match the user\'s request.'
-
-const IMAGE_SAFETY = [
-  { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
-  { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
-  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
-  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
-  { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_ONLY_HIGH' },
-] as const
 
 function formatSignedDecimal(value: bigint): string {
   return `-${value.toString()}`
@@ -174,41 +159,8 @@ export function buildChatBody(
   return wrap(projectId, input.model, request, envelope)
 }
 
-export function imageRequestId(now = Date.now()): string {
+export function detachedRequestId(now = Date.now()): string {
   return `agent/${randomUUID()}/${now}/${randomUUID()}/2`
-}
-
-export function buildImageBody(
-  projectId: string,
-  input: Extract<CcaGenerateInput, { kind: 'image' }>,
-  now = Date.now(),
-): CcaRequestBody {
-  const parts: GeminiContent['parts'] = []
-  for (const image of input.inputImages ?? []) {
-    parts.push({ inlineData: { mimeType: image.mimeType, data: image.data } })
-  }
-  parts.push({ text: input.prompt })
-  const imageConfig: Record<string, string> = {
-    aspectRatio: input.aspectRatio ?? '1:1',
-  }
-  if (input.imageSize !== undefined) imageConfig.imageSize = input.imageSize
-  return {
-    project: projectId,
-    model: input.model ?? IMAGE_MODEL,
-    request: {
-      contents: [{ role: 'user', parts }],
-      systemInstruction: systemInstruction(IMAGE_SYSTEM_INSTRUCTION, undefined),
-      generationConfig: {
-        responseModalities: ['IMAGE'],
-        imageConfig,
-        candidateCount: 1,
-      },
-      safetySettings: IMAGE_SAFETY,
-    },
-    requestType: 'agent',
-    userAgent: 'antigravity',
-    requestId: imageRequestId(now),
-  }
 }
 
 export function buildSearchBody(
@@ -238,7 +190,7 @@ export function buildSearchBody(
     },
     requestType: 'agent',
     userAgent: 'antigravity',
-    requestId: imageRequestId(now),
+    requestId: detachedRequestId(now),
   }
 }
 
@@ -247,7 +199,6 @@ export function buildCcaBody(
   input: CcaGenerateInput,
   envelope: RequestEnvelope,
 ): CcaRequestBody {
-  if (input.kind === 'image') return buildImageBody(projectId, input)
   if (input.kind === 'search') return buildSearchBody(projectId, input)
   return buildChatBody(projectId, input, envelope)
 }

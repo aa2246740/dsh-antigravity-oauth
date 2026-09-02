@@ -37,7 +37,6 @@ async function collect(stream: AsyncIterable<StreamChunk>): Promise<StreamChunk[
 function fakeSession(script: {
   chat?: CcaEvent[]
   search?: CcaEvent[]
-  imageError?: Error
 }) {
   const chatBodies: ChatGenerateInput[] = []
   const searchQueries: string[] = []
@@ -54,40 +53,21 @@ function fakeSession(script: {
           yield event
         }
       },
-      async *image(): AsyncIterable<CcaEvent> {
-        if (script.imageError !== undefined) throw script.imageError
-      },
     },
   } as unknown as AntigravitySession
   return { session, chatBodies, searchQueries }
 }
 
 describe('AntigravityAdapter search', () => {
-  it('does not offer generate_image when native image is off, even for a kitten prompt', async () => {
+  it('never offers generate_image, even for a kitten prompt', async () => {
     const fake = fakeSession({
       chat: [{ type: 'text', text: 'ok' }, { type: 'finish', reason: 'STOP' }],
     })
     const adapter = createAntigravityAdapter(fake.session, {
       nativeTools: true,
-      nativeImage: false,
       nativeSearch: true,
     })
     await collect(adapter.stream(options('给我生成一张小猫图')))
-    const names = fake.chatBodies[0]?.functions.map(tool => tool.name) ?? []
-    expect(names).toContain('search_web')
-    expect(names).not.toContain('generate_image')
-  })
-
-  it('does not offer generate_image on a news turn', async () => {
-    const fake = fakeSession({
-      chat: [{ type: 'text', text: 'ok' }, { type: 'finish', reason: 'STOP' }],
-    })
-    const adapter = createAntigravityAdapter(fake.session, {
-      nativeTools: true,
-      nativeImage: true,
-      nativeSearch: true,
-    })
-    await collect(adapter.stream(options(NEWS)))
     const names = fake.chatBodies[0]?.functions.map(tool => tool.name) ?? []
     expect(names).toContain('search_web')
     expect(names).not.toContain('generate_image')
@@ -99,7 +79,6 @@ describe('AntigravityAdapter search', () => {
     })
     const adapter = createAntigravityAdapter(fake.session, {
       nativeTools: true,
-      nativeImage: true,
       nativeSearch: true,
     })
     const chunks = await collect(adapter.stream(options(NEWS)))
@@ -111,18 +90,16 @@ describe('AntigravityAdapter search', () => {
     expect(text).toContain('grounded news')
   })
 
-  it('still searches after generate_image 429 on a news turn', async () => {
+  it('drops a hallucinated generate_image call and still searches news', async () => {
     const fake = fakeSession({
       chat: [{
         type: 'functionCall',
         name: 'generate_image',
         args: { prompt: 'kitten' },
       }, { type: 'finish', reason: 'STOP' }],
-      imageError: new Error('CCA 429: QUOTA_EXHAUSTED gemini-3.1-flash-image'),
     })
     const adapter = createAntigravityAdapter(fake.session, {
       nativeTools: true,
-      nativeImage: true,
       nativeSearch: true,
     })
     const chunks = await collect(adapter.stream(options(NEWS)))
@@ -132,7 +109,7 @@ describe('AntigravityAdapter search', () => {
       .map(chunk => chunk.text)
       .join('')
     expect(text).toContain('grounded news')
-    expect(text).toContain('Image generation failed')
+    expect(text).not.toContain('Image generation failed')
     const finish = chunks.find(chunk => chunk.type === 'finish')
     expect(finish).toEqual({ type: 'finish', reason: { kind: 'stop' } })
   })

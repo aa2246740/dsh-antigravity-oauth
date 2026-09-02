@@ -1,5 +1,5 @@
-import { CCA_ENDPOINTS, IMAGE_MODEL, IMAGE_MODEL_FALLBACKS } from './ids.ts'
-import { advanceEnvelope, buildChatBody, buildImageBody, buildSearchBody, streamGenerateContentUrl } from './envelope.ts'
+import { CCA_ENDPOINTS } from './ids.ts'
+import { advanceEnvelope, buildChatBody, buildSearchBody, streamGenerateContentUrl } from './envelope.ts'
 import type { CcaRequestBody } from './envelope.ts'
 import { parseCcaChunk, readSseJson } from './sse.ts'
 import type {
@@ -8,8 +8,6 @@ import type {
   CcaGenerateInput,
   CcaSession,
   ChatGenerateInput,
-  ImageGenerateInput,
-  ImageWireModelId,
   SearchGenerateInput,
 } from './types.ts'
 import { envProxyFetch } from './proxy-fetch.ts'
@@ -25,10 +23,6 @@ export class CcaHttpError extends Error {
   }
 }
 
-function isImageFallbackStatus(error: Error): boolean {
-  return error instanceof CcaHttpError && (error.status === 404 || error.status === 403)
-}
-
 export type CcaFetch = (input: string | URL, init?: RequestInit) => Promise<Response>
 
 export type CcaClientOptions = {
@@ -38,17 +32,10 @@ export type CcaClientOptions = {
   now?: () => number
 }
 
-function classifyStatus(status: number, kind: CcaGenerateInput['kind']): 'auth' | 'retry' | 'fail' {
-  if (status === 401) return 'auth'
-  if (status === 403) return kind === 'image' ? 'retry' : 'auth'
-  if (status === 404 && kind === 'image') return 'retry'
+function classifyStatus(status: number): 'auth' | 'retry' | 'fail' {
+  if (status === 401 || status === 403) return 'auth'
   if (status === 429 || status >= 500) return 'retry'
   return 'fail'
-}
-
-function imageModels(preferred?: ImageWireModelId): ImageWireModelId[] {
-  const first = preferred ?? IMAGE_MODEL
-  return [first, ...IMAGE_MODEL_FALLBACKS.filter(id => id !== first)]
 }
 
 export class CcaClient {
@@ -73,22 +60,6 @@ export class CcaClient {
     yield* this.generate(oauth, input, signal)
   }
 
-  async *image(oauth: AntigravityOAuth, input: ImageGenerateInput, signal?: AbortSignal): AsyncIterable<CcaEvent> {
-    let lastError: Error | undefined
-    for (const model of imageModels(input.model)) {
-      try {
-        yield* this.generate(oauth, { ...input, model }, signal)
-        return
-      } catch (error: unknown) {
-        lastError = error instanceof Error ? error : new Error(String(error))
-        if (signal?.aborted) throw lastError
-        if (isImageFallbackStatus(lastError)) continue
-        throw lastError
-      }
-    }
-    throw lastError ?? new Error('CCA image request failed')
-  }
-
   private endpoints(): string[] {
     const last = this.session.lastGoodEndpoint
     const rest = CCA_ENDPOINTS.filter(endpoint => endpoint !== last)
@@ -109,11 +80,9 @@ export class CcaClient {
     input: CcaGenerateInput,
     signal?: AbortSignal,
   ): AsyncIterable<CcaEvent> {
-    const body = input.kind === 'image'
-      ? buildImageBody(oauth.projectId, input, this.now())
-      : input.kind === 'search'
-        ? buildSearchBody(oauth.projectId, input, this.now())
-        : buildChatBody(oauth.projectId, input, advanceEnvelope(this.session, input.model, this.now(), this.lastExecutionId))
+    const body = input.kind === 'search'
+      ? buildSearchBody(oauth.projectId, input, this.now())
+      : buildChatBody(oauth.projectId, input, advanceEnvelope(this.session, input.model, this.now(), this.lastExecutionId))
     const endpoints = this.endpoints()
     let lastError: Error | undefined
     for (let index = 0; index < endpoints.length; index += 1) {
@@ -129,7 +98,7 @@ export class CcaClient {
         if (!response.ok) {
           const text = await response.text()
           const error = new CcaHttpError(response.status, text)
-          const kind = classifyStatus(response.status, input.kind)
+          const kind = classifyStatus(response.status)
           if (kind === 'retry' && index < endpoints.length - 1) {
             lastError = error
             continue
@@ -170,16 +139,6 @@ export function inspectChatRequest(projectId: string, input: ChatGenerateInput, 
   return {
     url: streamGenerateContentUrl(session.lastGoodEndpoint),
     body: buildChatBody(projectId, input, envelope),
-  }
-}
-
-export function inspectImageRequest(projectId: string, input: ImageGenerateInput, session: CcaSession, now = Date.now()): {
-  url: string
-  body: CcaRequestBody
-} {
-  return {
-    url: streamGenerateContentUrl(session.lastGoodEndpoint),
-    body: buildImageBody(projectId, input, now),
   }
 }
 

@@ -32,14 +32,6 @@ export const FREE_TIER_ID = 'free-tier'
 export const ONBOARD_TIMEOUT_MS = 30_000
 export const ONBOARD_POLL_INTERVAL_MS = 1_000
 
-export const IMAGE_MODEL = 'gemini-3-pro-image'
-
-export const IMAGE_MODEL_FALLBACKS = [
-  'gemini-3-pro-image',
-  'gemini-3.1-flash-image',
-  'gemini-3-pro-image-preview',
-] as const
-
 export const DEFAULT_ANTIGRAVITY_VERSION = '2.11.0'
 export const DEFAULT_ANTIGRAVITY_CL = '963137146'
 

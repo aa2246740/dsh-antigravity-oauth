@@ -7,13 +7,12 @@ interface Config {
   streamIdleTimeoutMs?: number;
   retryPolicy?: RetryPolicyConfig;
   nativeTools?: boolean;
-  nativeImage?: boolean;
   nativeSearch?: boolean;
 }
 declare const Config: z<Config>;
 //#endregion
 //#region src/types.d.ts
-type CcaKind = 'chat' | 'image' | 'search';
+type CcaKind = 'chat' | 'search';
 type AntigravityOAuth = {
   type: 'oauth';
   access: string;
@@ -30,7 +29,6 @@ type CcaSession = {
   lastGoodEndpoint: string;
 };
 type ChatWireModelId = 'gemini-3.7-flash-low' | 'gemini-3.7-flash-medium' | 'gemini-3.7-flash-high' | 'gemini-3.5-flash-extra-low' | 'gemini-3.5-flash-low' | 'gemini-3-flash-agent';
-type ImageWireModelId = 'gemini-3-pro-image' | 'gemini-3.1-flash-image' | 'gemini-3-pro-image-preview';
 type GeminiPart = {
   text: string;
   thought?: boolean;
@@ -70,24 +68,13 @@ type ChatGenerateInput = {
   functions: readonly FunctionToolDeclaration[];
   thinkingLevel?: 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH';
 };
-type ImageGenerateInput = {
-  kind: 'image';
-  prompt: string;
-  model?: ImageWireModelId;
-  aspectRatio?: string;
-  imageSize?: string;
-  inputImages?: readonly {
-    mimeType: string;
-    data: string;
-  }[];
-};
 type SearchGenerateInput = {
   kind: 'search';
   model: ChatWireModelId;
   query: string;
   thinkingLevel?: 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH';
 };
-type CcaGenerateInput = ChatGenerateInput | ImageGenerateInput | SearchGenerateInput;
+type CcaGenerateInput = ChatGenerateInput | SearchGenerateInput;
 type CcaUsage = {
   inputTokens: number;
   outputTokens: number;
@@ -172,7 +159,6 @@ declare class CcaClient {
   constructor(options: CcaClientOptions);
   chat(oauth: AntigravityOAuth, input: ChatGenerateInput, signal?: AbortSignal): AsyncIterable<CcaEvent>;
   search(oauth: AntigravityOAuth, input: SearchGenerateInput, signal?: AbortSignal): AsyncIterable<CcaEvent>;
-  image(oauth: AntigravityOAuth, input: ImageGenerateInput, signal?: AbortSignal): AsyncIterable<CcaEvent>;
   private endpoints;
   private headers;
   private generate;
@@ -225,7 +211,6 @@ declare class AntigravitySession {
 //#region src/adapter.d.ts
 interface AntigravityAdapterOptions {
   nativeTools: boolean;
-  nativeImage: boolean;
   nativeSearch: boolean;
   streamIdleTimeoutMs?: number;
   resolveAttachments?: () => AttachmentStore | undefined;

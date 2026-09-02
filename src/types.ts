@@ -1,4 +1,4 @@
-export type CcaKind = 'chat' | 'image' | 'search'
+export type CcaKind = 'chat' | 'search'
 
 export type AntigravityOAuth = {
   type: 'oauth'
@@ -29,12 +29,7 @@ export type ChatWireModelId =
   | 'gemini-3.5-flash-low'
   | 'gemini-3-flash-agent'
 
-export type ImageWireModelId =
-  | 'gemini-3-pro-image'
-  | 'gemini-3.1-flash-image'
-  | 'gemini-3-pro-image-preview'
-
-export type WireModelId = ChatWireModelId | ImageWireModelId
+export type WireModelId = ChatWireModelId
 
 export type GeminiPart =
   | { text: string, thought?: boolean, thoughtSignature?: string }
@@ -62,15 +57,6 @@ export type ChatGenerateInput = {
   thinkingLevel?: 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH'
 }
 
-export type ImageGenerateInput = {
-  kind: 'image'
-  prompt: string
-  model?: ImageWireModelId
-  aspectRatio?: string
-  imageSize?: string
-  inputImages?: readonly { mimeType: string, data: string }[]
-}
-
 export type SearchGenerateInput = {
   kind: 'search'
   model: ChatWireModelId
@@ -78,7 +64,7 @@ export type SearchGenerateInput = {
   thinkingLevel?: 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH'
 }
 
-export type CcaGenerateInput = ChatGenerateInput | ImageGenerateInput | SearchGenerateInput
+export type CcaGenerateInput = ChatGenerateInput | SearchGenerateInput
 
 export type CcaUsage = {
   inputTokens: number

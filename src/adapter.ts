@@ -21,12 +21,10 @@ import {
 } from './models.ts'
 import {
   ccaFunctionDeclarations,
-  GENERATE_IMAGE_TOOL,
+  isDroppedToolName,
   isSearchWebToolName,
   latestUserText,
-  parseGenerateImageArgs,
   parseSearchWebArgs,
-  wantsNativeImage,
   wantsNativeSearch,
 } from './native-tools.ts'
 import type { AntigravitySession } from './session.ts'
@@ -34,7 +32,6 @@ import type { CcaEvent, FunctionToolDeclaration, GeminiContent, GeminiPart, Reas
 
 export interface AntigravityAdapterOptions {
   nativeTools: boolean
-  nativeImage: boolean
   nativeSearch: boolean
   streamIdleTimeoutMs?: number
   resolveAttachments?: () => AttachmentStore | undefined
@@ -103,16 +100,10 @@ function convertMessages(messages: GenerateOptions['messages']): GeminiContent[]
 
 function functionsFor(
   options: GenerateOptions,
-  nativeImage: boolean,
   nativeSearch: boolean,
 ): FunctionToolDeclaration[] {
   if (options.purpose === 'compaction' || options.purpose === 'session-title') return []
-  const latest = latestUserText(options.messages)
-  return ccaFunctionDeclarations(
-    options.tools,
-    nativeImage && wantsNativeImage(latest),
-    nativeSearch,
-  )
+  return ccaFunctionDeclarations(options.tools, nativeSearch)
 }
 
 export class AntigravityAdapter extends LlmAdapter {
@@ -174,7 +165,7 @@ export class AntigravityAdapter extends LlmAdapter {
     }
     const effort = effortOf(options)
     const wire = routeChatModel(options.model, effort)
-    const functions = functionsFor(options, this.options.nativeImage, this.options.nativeSearch)
+    const functions = functionsFor(options, this.options.nativeSearch)
     const events = this.session.cca.chat(oauth, {
       kind: 'chat',
       model: wire,
@@ -195,7 +186,6 @@ export class AntigravityAdapter extends LlmAdapter {
     let usage: TokenUsage | undefined
     let finish: string | undefined
     const toolNames: string[] = []
-    const pendingImages: Array<{ prompt: string, aspectRatio?: string, imageSize?: string }> = []
     const pendingSearches: string[] = []
     const attachments = this.options.resolveAttachments?.()
     const idleMs = this.options.streamIdleTimeoutMs ?? STREAM_IDLE_TIMEOUT_MS
@@ -245,10 +235,7 @@ export class AntigravityAdapter extends LlmAdapter {
         if (event.type === 'functionCall') {
           yield* closeThought()
           yield* closeText()
-          if (event.name === GENERATE_IMAGE_TOOL && this.options.nativeImage) {
-            pendingImages.push(parseGenerateImageArgs(event.args))
-            continue
-          }
+          if (isDroppedToolName(event.name)) continue
           if (isSearchWebToolName(event.name) && this.options.nativeSearch) {
             pendingSearches.push(parseSearchWebArgs(event.args))
             continue
@@ -327,48 +314,6 @@ export class AntigravityAdapter extends LlmAdapter {
               }
             }
           }
-        }
-      }
-
-      if (pendingImages.length > 0) {
-        try {
-          const oauth = await this.session.refreshIfNeeded()
-          if (oauth === undefined) {
-            throw new LlmError(
-              'Antigravity is not connected. Open Settings and sign in.',
-              'MISSING_CREDENTIAL',
-            )
-          }
-          for (const image of pendingImages) {
-            for await (const event of this.session.cca.image(oauth, { kind: 'image', ...image }, options.signal)) {
-              if (event.type === 'inlineImage') {
-                yield* closeThought()
-                yield* closeText()
-                yield* this.emitImage(index, event.mimeType, event.data, attachments)
-                index += 1
-              }
-              if (event.type === 'text') {
-                yield* closeThought()
-                if (text.length === 0) yield { type: 'block-start', index, blockType: 'text' }
-                text += event.text
-                yield { type: 'text-delta', index, text: event.text }
-              }
-              if (event.type === 'usage') {
-                usage = {
-                  inputTokens: (usage?.inputTokens ?? 0) + event.usage.inputTokens,
-                  outputTokens: (usage?.outputTokens ?? 0) + event.usage.outputTokens,
-                }
-              }
-            }
-          }
-        } catch (error: unknown) {
-          if (pendingSearches.length === 0 && wantsNativeImage(latest)) throw error
-          const message = error instanceof Error ? error.message : String(error)
-          yield* closeThought()
-          if (text.length === 0) yield { type: 'block-start', index, blockType: 'text' }
-          const note = `Image generation failed. ${message.slice(0, 240)}\n`
-          text += note
-          yield { type: 'text-delta', index, text: note }
         }
       }
 

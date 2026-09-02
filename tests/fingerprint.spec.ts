@@ -118,44 +118,6 @@ describe('golden request shapes', () => {
     expect((body.request.toolConfig as { functionCallingConfig: { mode: string } }).functionCallingConfig.mode).toBe('VALIDATED')
   })
 
-  it('image request uses imageConfig', () => {
-    const session = createCcaSession()
-    const envelope = advanceEnvelope(session, 'gemini-3-pro-image')
-    const body = buildCcaBody('proj', {
-      kind: 'image',
-      prompt: 'a red cube',
-      aspectRatio: '1:1',
-      imageSize: '1K',
-    }, envelope)
-    expect(body.model).toBe('gemini-3-pro-image')
-    expect(body.requestType).toBe('agent')
-    expect(body.request.sessionId).toBeUndefined()
-    expect(body.request.labels).toBeUndefined()
-    const config = body.request.generationConfig as {
-      imageConfig: { aspectRatio: string, imageSize: string }
-      maxOutputTokens?: number
-    }
-    expect(config.imageConfig).toEqual({ aspectRatio: '1:1', imageSize: '1K' })
-    expect(config.maxOutputTokens).toBeUndefined()
-    expect(streamGenerateContentUrl(DAILY_ENDPOINT)).toContain('streamGenerateContent')
-  })
-
-  it('image request defaults aspectRatio to 1:1 and stays off the chat session', () => {
-    const session = createCcaSession()
-    session.sessionId = '-chat-session'
-    const envelope = advanceEnvelope(session, 'gemini-3.7-flash-high', 1, 'exec-chat')
-    const body = buildCcaBody('proj', {
-      kind: 'image',
-      prompt: 'a kitten',
-    }, envelope)
-    expect(body.request.sessionId).toBeUndefined()
-    expect(body.request.labels).toBeUndefined()
-    expect(JSON.stringify(body)).not.toContain('exec-chat')
-    expect(JSON.stringify(body)).not.toContain('-chat-session')
-    const config = body.request.generationConfig as { imageConfig: { aspectRatio: string } }
-    expect(config.imageConfig).toEqual({ aspectRatio: '1:1' })
-  })
-
   it('search request is googleSearch-only and stays off the chat session', () => {
     const session = createCcaSession()
     session.sessionId = '-chat-session'

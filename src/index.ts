@@ -63,7 +63,6 @@ export function apply(ctx: Context, config: Config): void {
     [HARNESS_ROUTE],
     createAntigravityAdapter(session, {
       nativeTools: config.nativeTools !== false,
-      nativeImage: config.nativeImage === true,
       nativeSearch: config.nativeSearch !== false,
       streamIdleTimeoutMs: config.streamIdleTimeoutMs,
       resolveAttachments: () => ctx.get('attachments'),
@@ -87,7 +86,7 @@ export function apply(ctx: Context, config: Config): void {
       promptCtx.on('system-prompt/assemble', async (_assembly, context, next) => {
         const assembled = await next()
         return context.agent?.options?.provider === HARNESS_ROUTE
-          ? maskDshWebAssembly(assembled, config.nativeImage === true)
+          ? maskDshWebAssembly(assembled)
           : assembled
       })
     })
