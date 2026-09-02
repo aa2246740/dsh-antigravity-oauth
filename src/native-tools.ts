@@ -11,7 +11,59 @@ const DSH_WEB_SECTION_NAME_SET = new Set<string>(DSH_WEB_SECTION_NAMES)
 const SEARCH_WEB_NAME_SET = new Set<string>([SEARCH_WEB_TOOL, 'web_search'])
 
 export const SEARCH_GUIDANCE =
-  'Use search_web to search the public web. Call generate_image only when the latest user message asks for an image. Do not call generate_image for news or search. Do not call web_search or web_fetch. Cloud Code Assist v1internal cannot mix built-in googleSearch with function tools, so search_web runs as a separate googleSearch-only request.'
+  'Use search_web for news and public-web facts. generate_image is only present when the latest user message asks for an image. Never call generate_image for news or search. Do not call web_search or web_fetch. Cloud Code Assist v1internal cannot mix built-in googleSearch with function tools, so search_web runs as a separate googleSearch-only request.'
+
+const IMAGE_INTENT = new RegExp([
+  '(?:生成|画|绘制|做|来)[一]?[张只个幅].{0,24}(?:图|图片|插画|海报|封面|照片|猫|狗)',
+  '(?:生成|画|绘制).{0,12}(?:图|图片|插画|海报|封面|照片)',
+  'generate(?:\\s+\\w+){0,4}\\s+(?:image|picture|illustration|kitten|cat)',
+  '(?:draw|paint)\\s+(?:me\\s+)?(?:an?\\s+)?',
+  'text-to-image',
+  'nano banana',
+].join('|'), 'i')
+
+const SEARCH_INTENT = new RegExp([
+  '搜搜',
+  '网上搜',
+  'web search',
+  'search the web',
+  'google\\s+(?:for|search)',
+  '查新闻',
+  '(?:搜|搜索).{0,8}(?:新闻|资讯|网页)',
+  '最近\\s*\\d+\\s*(?:小时|天).{0,16}(?:新闻|资讯|科技)',
+  '\\bnews\\b',
+].join('|'), 'i')
+
+type IntentMessage = {
+  role: string
+  source?: { kind?: string }
+  content: readonly { type: string, text?: string }[]
+}
+
+export function latestUserText(messages: readonly IntentMessage[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message === undefined || message.role !== 'user') continue
+    if (message.source?.kind === 'tool' || message.source?.kind === 'plugin') continue
+    const text = message.content
+      .filter(block => block.type === 'text' && typeof block.text === 'string')
+      .map(block => block.text ?? '')
+      .join('')
+      .trim()
+    if (text.length === 0) continue
+    if (text.includes('<system-reminder>') || text.includes('<available_skills>')) continue
+    return text
+  }
+  return ''
+}
+
+export function wantsNativeImage(text: string): boolean {
+  return IMAGE_INTENT.test(text)
+}
+
+export function wantsNativeSearch(text: string): boolean {
+  return SEARCH_INTENT.test(text)
+}
 
 export const GENERATE_IMAGE_DECLARATION: FunctionToolDeclaration = {
   name: GENERATE_IMAGE_TOOL,

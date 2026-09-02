@@ -23,8 +23,11 @@ import {
   ccaFunctionDeclarations,
   GENERATE_IMAGE_TOOL,
   isSearchWebToolName,
+  latestUserText,
   parseGenerateImageArgs,
   parseSearchWebArgs,
+  wantsNativeImage,
+  wantsNativeSearch,
 } from './native-tools.ts'
 import type { AntigravitySession } from './session.ts'
 import type { CcaEvent, FunctionToolDeclaration, GeminiContent, GeminiPart, ReasoningEffort } from './types.ts'
@@ -104,7 +107,12 @@ function functionsFor(
   nativeSearch: boolean,
 ): FunctionToolDeclaration[] {
   if (options.purpose === 'compaction' || options.purpose === 'session-title') return []
-  return ccaFunctionDeclarations(options.tools, nativeImage, nativeSearch)
+  const latest = latestUserText(options.messages)
+  return ccaFunctionDeclarations(
+    options.tools,
+    nativeImage && wantsNativeImage(latest),
+    nativeSearch,
+  )
 }
 
 export class AntigravityAdapter extends LlmAdapter {
@@ -268,46 +276,14 @@ export class AntigravityAdapter extends LlmAdapter {
         if (event.type === 'finish') finish = event.reason
       }
 
-      if (pendingImages.length > 0) {
-        try {
-          const oauth = await this.session.refreshIfNeeded()
-          if (oauth === undefined) {
-            throw new LlmError(
-              'Antigravity is not connected. Open Settings and sign in.',
-              'MISSING_CREDENTIAL',
-            )
-          }
-          for (const image of pendingImages) {
-            for await (const event of this.session.cca.image(oauth, { kind: 'image', ...image }, options.signal)) {
-              if (event.type === 'inlineImage') {
-                yield* closeThought()
-                yield* closeText()
-                yield* this.emitImage(index, event.mimeType, event.data, attachments)
-                index += 1
-              }
-              if (event.type === 'text') {
-                yield* closeThought()
-                if (text.length === 0) yield { type: 'block-start', index, blockType: 'text' }
-                text += event.text
-                yield { type: 'text-delta', index, text: event.text }
-              }
-              if (event.type === 'usage') {
-                usage = {
-                  inputTokens: (usage?.inputTokens ?? 0) + event.usage.inputTokens,
-                  outputTokens: (usage?.outputTokens ?? 0) + event.usage.outputTokens,
-                }
-              }
-            }
-          }
-        } catch (error: unknown) {
-          if (pendingSearches.length === 0) throw error
-          const message = error instanceof Error ? error.message : String(error)
-          yield* closeThought()
-          if (text.length === 0) yield { type: 'block-start', index, blockType: 'text' }
-          const note = `Image generation failed. ${message.slice(0, 240)}\n`
-          text += note
-          yield { type: 'text-delta', index, text: note }
-        }
+      const latest = latestUserText(options.messages)
+      if (
+        pendingSearches.length === 0
+        && toolNames.length === 0
+        && this.options.nativeSearch
+        && wantsNativeSearch(latest)
+      ) {
+        pendingSearches.push(latest)
       }
 
       if (pendingSearches.length > 0) {
@@ -351,6 +327,48 @@ export class AntigravityAdapter extends LlmAdapter {
               }
             }
           }
+        }
+      }
+
+      if (pendingImages.length > 0) {
+        try {
+          const oauth = await this.session.refreshIfNeeded()
+          if (oauth === undefined) {
+            throw new LlmError(
+              'Antigravity is not connected. Open Settings and sign in.',
+              'MISSING_CREDENTIAL',
+            )
+          }
+          for (const image of pendingImages) {
+            for await (const event of this.session.cca.image(oauth, { kind: 'image', ...image }, options.signal)) {
+              if (event.type === 'inlineImage') {
+                yield* closeThought()
+                yield* closeText()
+                yield* this.emitImage(index, event.mimeType, event.data, attachments)
+                index += 1
+              }
+              if (event.type === 'text') {
+                yield* closeThought()
+                if (text.length === 0) yield { type: 'block-start', index, blockType: 'text' }
+                text += event.text
+                yield { type: 'text-delta', index, text: event.text }
+              }
+              if (event.type === 'usage') {
+                usage = {
+                  inputTokens: (usage?.inputTokens ?? 0) + event.usage.inputTokens,
+                  outputTokens: (usage?.outputTokens ?? 0) + event.usage.outputTokens,
+                }
+              }
+            }
+          }
+        } catch (error: unknown) {
+          if (pendingSearches.length === 0 && wantsNativeImage(latest)) throw error
+          const message = error instanceof Error ? error.message : String(error)
+          yield* closeThought()
+          if (text.length === 0) yield { type: 'block-start', index, blockType: 'text' }
+          const note = `Image generation failed. ${message.slice(0, 240)}\n`
+          text += note
+          yield { type: 'text-delta', index, text: note }
         }
       }
 
