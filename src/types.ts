@@ -29,7 +29,10 @@ export type ChatWireModelId =
   | 'gemini-3.5-flash-low'
   | 'gemini-3-flash-agent'
 
-export type ImageWireModelId = 'gemini-3-pro-image'
+export type ImageWireModelId =
+  | 'gemini-3-pro-image'
+  | 'gemini-3.1-flash-image'
+  | 'gemini-3-pro-image-preview'
 
 export type WireModelId = ChatWireModelId | ImageWireModelId
 
@@ -62,6 +65,7 @@ export type ChatGenerateInput = {
 export type ImageGenerateInput = {
   kind: 'image'
   prompt: string
+  model?: ImageWireModelId
   aspectRatio?: string
   imageSize?: string
   inputImages?: readonly { mimeType: string, data: string }[]

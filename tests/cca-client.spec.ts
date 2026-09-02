@@ -77,8 +77,100 @@ describe('CcaClient', () => {
     }
     expect(url).toContain('streamGenerateContent')
     expect(body?.model).toBe('gemini-3-pro-image')
-    const config = (body?.request as { generationConfig: { imageConfig: Record<string, string> } }).generationConfig
-    expect(config.imageConfig.aspectRatio).toBe('1:1')
+    const request = body?.request as {
+      sessionId?: string
+      labels?: Record<string, string>
+      generationConfig: { imageConfig: Record<string, string>, maxOutputTokens?: number }
+    }
+    expect(request.sessionId).toBeUndefined()
+    expect(request.labels).toBeUndefined()
+    expect(request.generationConfig.imageConfig.aspectRatio).toBe('1:1')
+    expect(request.generationConfig.maxOutputTokens).toBeUndefined()
     expect(events.some(event => event.type === 'inlineImage')).toBe(true)
+  })
+
+  it('image after chat does not send the chat last_execution_id', async () => {
+    const seen: Array<Record<string, unknown>> = []
+    const client = new CcaClient({
+      session: createCcaSession('https://daily-cloudcode-pa.googleapis.com'),
+      fetch: async (input, init) => {
+        seen.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+        const isImage = seen.length > 1
+        return sseResponse([{
+          response: {
+            responseId: isImage ? 'exec-image' : 'exec-chat',
+            candidates: [{
+              content: {
+                parts: isImage
+                  ? [{ inlineData: { mimeType: 'image/png', data: 'aaaa' } }]
+                  : [{ text: 'ok' }],
+              },
+              finishReason: 'STOP',
+            }],
+          },
+        }], String(input))
+      },
+    })
+    for await (const _event of client.chat(oauth, {
+      kind: 'chat',
+      model: 'gemini-3.7-flash-high',
+      contents: [{ role: 'user', parts: [{ text: 'hi' }] }],
+      functions: [{ name: 'read_file', description: 'Read', parameters: { type: 'object' } }],
+    })) {
+      // drain
+    }
+    for await (const _event of client.image(oauth, { kind: 'image', prompt: 'a kitten' })) {
+      // drain
+    }
+    const chatRequest = seen[0]?.request as { labels: Record<string, string>, sessionId: string }
+    expect(chatRequest.sessionId.length).toBeGreaterThan(0)
+    const imageBody = seen[1]
+    const imageRequest = imageBody?.request as { sessionId?: string, labels?: Record<string, string> }
+    expect(imageRequest.sessionId).toBeUndefined()
+    expect(imageRequest.labels).toBeUndefined()
+    expect(JSON.stringify(imageBody)).not.toContain('exec-chat')
+
+    seen.length = 0
+    for await (const _event of client.chat(oauth, {
+      kind: 'chat',
+      model: 'gemini-3.7-flash-high',
+      contents: [{ role: 'user', parts: [{ text: 'again' }] }],
+      functions: [{ name: 'read_file', description: 'Read', parameters: { type: 'object' } }],
+    })) {
+      // drain
+    }
+    const followUp = seen[0]?.request as { labels: Record<string, string> }
+    expect(followUp.labels.last_execution_id).toBe('exec-chat')
+  })
+
+  it('falls back from gemini-3-pro-image 404 to gemini-3.1-flash-image', async () => {
+    const models: string[] = []
+    const client = new CcaClient({
+      session: createCcaSession('https://daily-cloudcode-pa.googleapis.com'),
+      fetch: async (input, init) => {
+        const body = JSON.parse(String(init?.body)) as { model: string }
+        models.push(body.model)
+        if (body.model === 'gemini-3-pro-image') {
+          return new Response(JSON.stringify({
+            error: { code: 404, message: 'Requested entity was not found.', status: 'NOT_FOUND' },
+          }), { status: 404, headers: { 'content-type': 'application/json' } })
+        }
+        return sseResponse([{
+          response: {
+            candidates: [{
+              content: { parts: [{ inlineData: { mimeType: 'image/png', data: 'bbbb' } }] },
+              finishReason: 'STOP',
+            }],
+          },
+        }], String(input))
+      },
+    })
+    const events: CcaEvent[] = []
+    for await (const event of client.image(oauth, { kind: 'image', prompt: 'a kitten' })) {
+      events.push(event)
+    }
+    expect(models[0]).toBe('gemini-3-pro-image')
+    expect(models).toContain('gemini-3.1-flash-image')
+    expect(events.some(event => event.type === 'inlineImage' && event.data === 'bbbb')).toBe(true)
   })
 })

@@ -19,6 +19,8 @@ const WIRE_PROFILES: Record<string, { modelEnum?: string, maxOutputTokens: numbe
   'gemini-3.7-flash-medium': { maxOutputTokens: 65_536 },
   'gemini-3.7-flash-high': { maxOutputTokens: 65_536 },
   'gemini-3-pro-image': { maxOutputTokens: 65_536 },
+  'gemini-3.1-flash-image': { maxOutputTokens: 65_536 },
+  'gemini-3-pro-image-preview': { maxOutputTokens: 65_536 },
 }
 
 const IMAGE_SYSTEM_INSTRUCTION =
@@ -172,30 +174,41 @@ export function buildChatBody(
   return wrap(projectId, input.model, request, envelope)
 }
 
+export function imageRequestId(now = Date.now()): string {
+  return `agent/${randomUUID()}/${now}/${randomUUID()}/2`
+}
+
 export function buildImageBody(
   projectId: string,
   input: Extract<CcaGenerateInput, { kind: 'image' }>,
-  envelope: RequestEnvelope,
+  now = Date.now(),
 ): CcaRequestBody {
   const parts: GeminiContent['parts'] = []
   for (const image of input.inputImages ?? []) {
     parts.push({ inlineData: { mimeType: image.mimeType, data: image.data } })
   }
   parts.push({ text: input.prompt })
-  const imageConfig: Record<string, string> = {}
-  if (input.aspectRatio !== undefined) imageConfig.aspectRatio = input.aspectRatio
+  const imageConfig: Record<string, string> = {
+    aspectRatio: input.aspectRatio ?? '1:1',
+  }
   if (input.imageSize !== undefined) imageConfig.imageSize = input.imageSize
-  return wrap(projectId, IMAGE_MODEL, {
-    contents: [{ role: 'user', parts }],
-    systemInstruction: systemInstruction(IMAGE_SYSTEM_INSTRUCTION, undefined),
-    generationConfig: {
-      responseModalities: ['IMAGE'],
-      imageConfig,
-      candidateCount: 1,
-      maxOutputTokens: WIRE_PROFILES[IMAGE_MODEL]?.maxOutputTokens ?? 65_536,
+  return {
+    project: projectId,
+    model: input.model ?? IMAGE_MODEL,
+    request: {
+      contents: [{ role: 'user', parts }],
+      systemInstruction: systemInstruction(IMAGE_SYSTEM_INSTRUCTION, undefined),
+      generationConfig: {
+        responseModalities: ['IMAGE'],
+        imageConfig,
+        candidateCount: 1,
+      },
+      safetySettings: IMAGE_SAFETY,
     },
-    safetySettings: IMAGE_SAFETY,
-  }, envelope)
+    requestType: 'agent',
+    userAgent: 'antigravity',
+    requestId: imageRequestId(now),
+  }
 }
 
 export function buildCcaBody(
@@ -205,7 +218,7 @@ export function buildCcaBody(
 ): CcaRequestBody {
   return input.kind === 'chat'
     ? buildChatBody(projectId, input, envelope)
-    : buildImageBody(projectId, input, envelope)
+    : buildImageBody(projectId, input)
 }
 
 

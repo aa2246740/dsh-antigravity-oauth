@@ -29,6 +29,7 @@ type CcaSession = {
   lastGoodEndpoint: string;
 };
 type ChatWireModelId = 'gemini-3.7-flash-low' | 'gemini-3.7-flash-medium' | 'gemini-3.7-flash-high' | 'gemini-3.5-flash-extra-low' | 'gemini-3.5-flash-low' | 'gemini-3-flash-agent';
+type ImageWireModelId = 'gemini-3-pro-image' | 'gemini-3.1-flash-image' | 'gemini-3-pro-image-preview';
 type GeminiPart = {
   text: string;
   thought?: boolean;
@@ -71,6 +72,7 @@ type ChatGenerateInput = {
 type ImageGenerateInput = {
   kind: 'image';
   prompt: string;
+  model?: ImageWireModelId;
   aspectRatio?: string;
   imageSize?: string;
   inputImages?: readonly {
