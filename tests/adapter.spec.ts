@@ -41,6 +41,7 @@ function fakeSession(script: {
   const chatBodies: ChatGenerateInput[] = []
   const searchQueries: string[] = []
   const session = {
+    thoughtSignatures: new Map<string, string>(),
     refreshIfNeeded: async () => oauth,
     cca: {
       async *chat(_oauth: unknown, input: ChatGenerateInput): AsyncIterable<CcaEvent> {
@@ -112,5 +113,70 @@ describe('AntigravityAdapter search', () => {
     expect(text).not.toContain('Image generation failed')
     const finish = chunks.find(chunk => chunk.type === 'finish')
     expect(finish).toEqual({ type: 'finish', reason: { kind: 'stop' } })
+  })
+
+  it('replays thought_signature on the next CCA functionCall part', async () => {
+    const fake = fakeSession({
+      chat: [{
+        type: 'functionCall',
+        id: 'call_skill',
+        name: 'skill',
+        args: { name: 'unslop' },
+        thoughtSignature: 'sig-abc',
+      }, { type: 'finish', reason: 'STOP' }],
+    })
+    const adapter = createAntigravityAdapter(fake.session, {
+      nativeTools: true,
+      nativeSearch: true,
+    })
+    await collect(adapter.stream(options('hi')))
+    expect(fake.session.thoughtSignatures.get('call_skill')).toBe('sig-abc')
+
+    const followUp: GenerateOptions = {
+      ...options('continue'),
+      messages: [
+        {
+          id: 'u1',
+          role: 'user',
+          source: { kind: 'user' },
+          content: [{ type: 'text', text: 'hi' }],
+        },
+        {
+          id: 'a1',
+          role: 'assistant',
+          source: { kind: 'model', provider: 'agy-google-antigravity', model: 'gemini-3.7-flash' },
+          content: [{
+            type: 'tool-call',
+            id: 'call_skill',
+            name: 'skill',
+            arguments: '{"name":"unslop"}',
+          }],
+        },
+        {
+          id: 't1',
+          role: 'user',
+          source: { kind: 'tool', callId: 'call_skill' },
+          content: [{
+            type: 'tool-result',
+            toolCallId: 'call_skill',
+            content: [{ type: 'text', text: 'loaded' }],
+          }],
+        },
+      ],
+    } as unknown as GenerateOptions
+    fake.session.cca.chat = async function* (_oauth: unknown, input: ChatGenerateInput) {
+      fake.chatBodies.push(input)
+      yield { type: 'text' as const, text: 'ok' }
+      yield { type: 'finish' as const, reason: 'STOP' }
+    }
+    await collect(adapter.stream(followUp))
+    const contents = fake.chatBodies.at(-1)?.contents ?? []
+    const model = contents.find(entry => entry.role === 'model')
+    const call = model?.parts.find(part => 'functionCall' in part) as {
+      functionCall: { name: string }
+      thoughtSignature?: string
+    }
+    expect(call?.functionCall.name).toBe('skill')
+    expect(call?.thoughtSignature).toBe('sig-abc')
   })
 })

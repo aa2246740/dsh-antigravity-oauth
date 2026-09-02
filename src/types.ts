@@ -33,7 +33,7 @@ export type WireModelId = ChatWireModelId
 
 export type GeminiPart =
   | { text: string, thought?: boolean, thoughtSignature?: string }
-  | { functionCall: { name: string, args: Record<string, unknown>, id?: string } }
+  | { functionCall: { name: string, args: Record<string, unknown>, id?: string }, thoughtSignature?: string }
   | { functionResponse: { name: string, response: Record<string, unknown>, id?: string } }
   | { inlineData: { mimeType: string, data: string } }
 
@@ -76,7 +76,7 @@ export type CcaUsage = {
 export type CcaEvent =
   | { type: 'text', text: string }
   | { type: 'thought', text: string }
-  | { type: 'functionCall', id?: string, name: string, args: Record<string, unknown> }
+  | { type: 'functionCall', id?: string, name: string, args: Record<string, unknown>, thoughtSignature?: string }
   | { type: 'inlineImage', mimeType: string, data: string }
   | { type: 'usage', usage: CcaUsage }
   | { type: 'finish', reason: string, responseId?: string }

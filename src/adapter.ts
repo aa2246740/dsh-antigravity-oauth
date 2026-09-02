@@ -52,7 +52,10 @@ function textOf(blocks: readonly ContentBlock[]): string {
     .join('')
 }
 
-function convertMessages(messages: GenerateOptions['messages']): GeminiContent[] {
+function convertMessages(
+  messages: GenerateOptions['messages'],
+  thoughtSignatures: ReadonlyMap<string, string>,
+): GeminiContent[] {
   const contents: GeminiContent[] = []
   for (const message of messages) {
     if (message.source.kind === 'tool') {
@@ -83,7 +86,11 @@ function convertMessages(messages: GenerateOptions['messages']): GeminiContent[]
           } catch {
             args = { raw: block.arguments }
           }
-          parts.push({ functionCall: { name: block.name, args, id: block.id } })
+          const thoughtSignature = thoughtSignatures.get(block.id)
+          parts.push({
+            functionCall: { name: block.name, args, id: block.id },
+            ...thoughtSignature === undefined ? {} : { thoughtSignature },
+          })
         }
       }
       if (parts.length > 0) contents.push({ role: 'model', parts })
@@ -169,7 +176,7 @@ export class AntigravityAdapter extends LlmAdapter {
     const events = this.session.cca.chat(oauth, {
       kind: 'chat',
       model: wire,
-      contents: convertMessages(options.messages),
+      contents: convertMessages(options.messages, this.session.thoughtSignatures),
       ...options.system === undefined || options.system.length === 0 ? {} : { system: options.system },
       functions,
       ...thinkingLevelFor(options.model, effort) === undefined
@@ -241,6 +248,9 @@ export class AntigravityAdapter extends LlmAdapter {
             continue
           }
           const id = CallId(event.id ?? `call_${index}`)
+          if (event.thoughtSignature !== undefined && event.thoughtSignature.length > 0) {
+            this.session.thoughtSignatures.set(id, event.thoughtSignature)
+          }
           const args = JSON.stringify(event.args)
           yield { type: 'block-start', index, blockType: 'tool-call' }
           yield { type: 'tool-call-delta', index, id, name: event.name, argumentsDelta: args }

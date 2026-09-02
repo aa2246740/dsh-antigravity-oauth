@@ -39,6 +39,7 @@ type GeminiPart = {
     args: Record<string, unknown>;
     id?: string;
   };
+  thoughtSignature?: string;
 } | {
   functionResponse: {
     name: string;
@@ -92,6 +93,7 @@ type CcaEvent = {
   id?: string;
   name: string;
   args: Record<string, unknown>;
+  thoughtSignature?: string;
 } | {
   type: 'inlineImage';
   mimeType: string;
@@ -182,6 +184,7 @@ declare class AntigravitySession {
   readonly store: AntigravityCredentialStore;
   readonly cca: CcaClient;
   readonly ccaSession: CcaSession;
+  readonly thoughtSignatures: Map<string, string>;
   private readonly fetchImpl;
   private lastRefreshAttempt;
   private operation;

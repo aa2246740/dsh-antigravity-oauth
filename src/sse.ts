@@ -71,9 +71,14 @@ export function parseCcaChunk(raw: unknown): CcaEvent[] {
     if (typeof candidate.finishReason === 'string') finishReason = candidate.finishReason
     const content = isRecord(candidate.content) ? candidate.content : undefined
     const parts = content !== undefined && Array.isArray(content.parts) ? content.parts : []
+    let lastThoughtSignature: string | undefined
     for (const part of parts) {
       if (!isRecord(part)) continue
+      const partSignature = typeof part.thoughtSignature === 'string' && part.thoughtSignature.length > 0
+        ? part.thoughtSignature
+        : undefined
       if (part.thought === true && typeof part.text === 'string') {
+        if (partSignature !== undefined) lastThoughtSignature = partSignature
         events.push({ type: 'thought', text: part.text })
         continue
       }
@@ -82,11 +87,16 @@ export function parseCcaChunk(raw: unknown): CcaEvent[] {
       }
       if (isRecord(part.functionCall) && typeof part.functionCall.name === 'string') {
         const args = isRecord(part.functionCall.args) ? part.functionCall.args : {}
+        const callSignature = typeof part.functionCall.thoughtSignature === 'string'
+          && part.functionCall.thoughtSignature.length > 0
+          ? part.functionCall.thoughtSignature
+          : partSignature ?? lastThoughtSignature
         events.push({
           type: 'functionCall',
           name: part.functionCall.name,
           args,
           ...typeof part.functionCall.id === 'string' ? { id: part.functionCall.id } : {},
+          ...callSignature === undefined ? {} : { thoughtSignature: callSignature },
         })
       }
       if (isRecord(part.inlineData) && typeof part.inlineData.data === 'string' && typeof part.inlineData.mimeType === 'string') {

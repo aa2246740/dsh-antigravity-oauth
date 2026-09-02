@@ -28,6 +28,7 @@ export class AntigravitySession {
   readonly store: AntigravityCredentialStore
   readonly cca: CcaClient
   readonly ccaSession: CcaSession
+  readonly thoughtSignatures = new Map<string, string>()
   private readonly fetchImpl: FetchImpl
   private lastRefreshAttempt = 0
   private operation: Promise<void> | undefined
