@@ -12,6 +12,7 @@ import type {
   ImageWireModelId,
   SearchGenerateInput,
 } from './types.ts'
+import { envProxyFetch } from './proxy-fetch.ts'
 import { antigravityUserAgent } from './user-agent.ts'
 
 export class CcaHttpError extends Error {
@@ -59,7 +60,7 @@ export class CcaClient {
 
   constructor(options: CcaClientOptions) {
     this.session = options.session
-    this.fetchImpl = options.fetch ?? fetch
+    this.fetchImpl = options.fetch ?? envProxyFetch
     this.userAgent = options.userAgent ?? antigravityUserAgent
     this.now = options.now ?? Date.now
   }

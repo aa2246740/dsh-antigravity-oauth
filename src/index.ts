@@ -9,6 +9,7 @@ import { maskDshWebAssembly } from './native-tools.ts'
 import type { Config } from './plugin-config.ts'
 import { AntigravitySession } from './session.ts'
 import { AntigravityCredentialStore } from './store.ts'
+import { envProxyFetch } from './proxy-fetch.ts'
 import { ensureAntigravityVersion } from './user-agent.ts'
 
 type NativeAssembly = {
@@ -70,7 +71,7 @@ export function apply(ctx: Context, config: Config): void {
   )
   const refreshRoutes = (): Promise<void> => syncAuthenticatedRoute(session, registration)
   void refreshRoutes()
-  void ensureAntigravityVersion()
+  void ensureAntigravityVersion(envProxyFetch)
   ctx.effect(() => {
     const timer = setInterval(() => {
       void session.refreshIfNeeded().catch(() => { /* next poll retries */ })

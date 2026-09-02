@@ -13,6 +13,7 @@ import {
 import { isSafeAuthUrl, safeMessage } from './redact.ts'
 import type { AntigravityCredentialStore } from './store.ts'
 import type { AntigravityAccountState, AntigravityOAuth, CcaSession } from './types.ts'
+import { envProxyFetch } from './proxy-fetch.ts'
 import { ensureAntigravityVersion } from './user-agent.ts'
 
 export type FetchImpl = typeof fetch
@@ -36,7 +37,7 @@ export class AntigravitySession {
   private callbackServer: ReturnType<typeof createServer> | undefined
   private account: AntigravityAccountState = { status: 'signed-out' }
 
-  constructor(store: AntigravityCredentialStore, fetchImpl: FetchImpl = fetch) {
+  constructor(store: AntigravityCredentialStore, fetchImpl: FetchImpl = envProxyFetch) {
     this.store = store
     this.fetchImpl = fetchImpl
     this.ccaSession = createCcaSession()

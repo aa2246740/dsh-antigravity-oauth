@@ -365,7 +365,9 @@ export class AntigravityAdapter extends LlmAdapter {
       yield { type: 'finish', reason: { kind } }
     } catch (error: unknown) {
       if (error instanceof LlmError) throw error
-      const message = error instanceof Error ? error.message : String(error)
+      const message = error instanceof Error
+        ? (error.cause instanceof Error ? `${error.message}: ${error.cause.message}` : error.message)
+        : String(error)
       const code = /\b401\b|\b403\b/.test(message)
         ? 'AUTH'
         : /\b429\b/.test(message)
