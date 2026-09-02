@@ -17,6 +17,7 @@ This is a community plugin. It is **not** Google Antigravity, **not** the public
 3. **Do not use an account you cannot afford to lose.** Prefer a spare Google account. Do not rotate multiple accounts to dodge quota. This plugin is single-account on purpose.
 4. **No warranty.** Chat working today does not mean the route, models, quota, or account will still work tomorrow.
 5. **Do not paste secrets.** Never put `.dsh-antigravity-oauth.json`, refresh tokens, callback URLs, or authorization codes in issues, chats, or screenshots.
+6. **The OAuth client id/secret in this repo are not your Google password.** They are the public Antigravity **desktop app** client (installed-app style), the same class of credentials the official IDE ships. They are required for this unofficial login. Your account tokens stay in `$DSH_HOME/.dsh-antigravity-oauth.json` on your machine.
 
 If you want a supported Gemini integration, use Google's official API / AI Studio products. Do not use this plugin.
 

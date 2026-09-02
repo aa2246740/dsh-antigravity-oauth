@@ -17,6 +17,7 @@
 3. **不要用丢不起的号。** 尽量用备用 Google 账号。不要用多账号轮询躲额度。本插件故意只支持单账号。
 4. **没有担保。** 今天能聊，不代表明天路由、模型、额度或账号还在。
 5. **不要贴机密。** Issue、聊天、截图里不要出现 `.dsh-antigravity-oauth.json`、refresh token、回调 URL 或授权码。
+6. **仓库里的 OAuth client id/secret 不是你的 Google 密码。** 那是 Antigravity **桌面应用**的公开 client（安装应用那一类），官方 IDE 也带同样性质的凭据。非官方登录必须用它。你的账号 token 只存在本机 `$DSH_HOME/.dsh-antigravity-oauth.json`。
 
 若你需要受支持的 Gemini 接入，请走 Google 官方 API / AI Studio。不要用这个插件。
 
