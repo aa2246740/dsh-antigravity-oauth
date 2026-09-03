@@ -52,7 +52,7 @@ It is **not** `dsh-oauth-login`. Do not merge the two.
 
 ## Install
 
-Node **22.19+** and a running DeepSeek Harness (this tree was built against **0.1.0-rc.8**).
+Node **22.19+** and a running DeepSeek Harness. This tree was built and verified against **0.1.1-rc.2** (the Host DSH.app launches). The desktop app bundle itself may show a different number, such as 0.1.3.
 
 ```sh
 git clone https://github.com/aa2246740/dsh-antigravity-oauth.git

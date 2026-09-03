@@ -52,7 +52,7 @@
 
 ## 安装
 
-需要 Node **22.19+**，以及能跑起来的 DeepSeek Harness（本仓库按 **0.1.0-rc.8** 构建）。
+需要 Node **22.19+**，以及能跑起来的 DeepSeek Harness。本仓库按 **0.1.1-rc.2** 构建和验证（就是 DSH.app 拉起的那份 Host）。桌面壳自己的版本号可能不同，例如 0.1.3。
 
 ```sh
 git clone https://github.com/aa2246740/dsh-antigravity-oauth.git
