@@ -42,6 +42,17 @@ export { AntigravitySession } from './session.ts'
 export { AntigravityCredentialStore, antigravityAuthPath } from './store.ts'
 export { authorizationUrl, LOAD_CODE_ASSIST_BODY, SCOPES } from './oauth.ts'
 export { buildCcaBody, createCcaSession, streamGenerateContentUrl } from './envelope.ts'
+export {
+  appendContinueMemo,
+  appendSearchDossier,
+  appendSearchMemo,
+  appendSearchTurns,
+  SEARCH_ANSWER_GUIDANCE,
+  SEARCH_CONTINUE_GUIDANCE,
+  SEARCH_FOLLOW_UP_LIMIT,
+  THOUGHT_ONLY_CONTINUE,
+  withoutSearchWeb,
+} from './search-turn.ts'
 export { CcaClient } from './cca-client.ts'
 export type { AntigravityOAuth, CcaKind, CcaSession } from './types.ts'
 

@@ -11,18 +11,28 @@ const DSH_WEB_SECTION_NAME_SET = new Set<string>(DSH_WEB_SECTION_NAMES)
 const SEARCH_WEB_NAME_SET = new Set<string>([SEARCH_WEB_TOOL, 'web_search'])
 
 export const SEARCH_GUIDANCE =
-  'Use search_web for news and public-web facts. Do not call web_search, web_fetch, or generate_image. This route has no image generation. Cloud Code Assist v1internal cannot mix built-in googleSearch with function tools, so search_web runs as a separate googleSearch-only request.'
+  'Use search_web for news and public-web facts. Do not call web_search, web_fetch, or generate_image. This route has no image generation. Cloud Code Assist v1internal cannot mix built-in googleSearch with function tools, so search_web runs as a separate googleSearch-only request. Search results come back to you as a tool result. Do not treat that grounded dump as the final user-facing answer; continue the original task in the user\'s language and call other tools if you still need files or commands.'
 
 const SEARCH_INTENT = new RegExp([
   '搜搜',
   '网上搜',
+  '搜一下',
+  '查一下',
+  '查查',
+  '调研',
   'web search',
   'search the web',
+  'look up',
+  '\\bresearch\\b',
   'google\\s+(?:for|search)',
   '查新闻',
-  '(?:搜|搜索).{0,8}(?:新闻|资讯|网页)',
+  '(?:搜|搜索).{0,8}(?:新闻|资讯|网页|资料|文档)',
   '最近\\s*\\d+\\s*(?:小时|天).{0,16}(?:新闻|资讯|科技)',
   '\\bnews\\b',
+  '官方(?:资料|文档|网站)?',
+  '怎么配',
+  '怎么填',
+  '有资料吗',
 ].join('|'), 'i')
 
 type IntentMessage = {
@@ -43,6 +53,7 @@ export function latestUserText(messages: readonly IntentMessage[]): string {
       .trim()
     if (text.length === 0) continue
     if (text.includes('<system-reminder>') || text.includes('<available_skills>')) continue
+    if (text.startsWith('Current runtime context.')) continue
     return text
   }
   return ''

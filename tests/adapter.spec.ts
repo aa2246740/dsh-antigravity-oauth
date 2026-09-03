@@ -34,29 +34,63 @@ async function collect(stream: AsyncIterable<StreamChunk>): Promise<StreamChunk[
   return chunks
 }
 
+function asScripts(events: CcaEvent[] | CcaEvent[][] | undefined): CcaEvent[][] {
+  if (events === undefined) return [[{ type: 'finish', reason: 'STOP' }]]
+  if (events.length > 0 && !Array.isArray(events[0])) return [events as CcaEvent[]]
+  return events as CcaEvent[][]
+}
+
 function fakeSession(script: {
-  chat?: CcaEvent[]
-  search?: CcaEvent[]
+  chat?: CcaEvent[] | CcaEvent[][]
+  search?: CcaEvent[] | CcaEvent[][]
 }) {
   const chatBodies: ChatGenerateInput[] = []
   const searchQueries: string[] = []
+  const chatScripts = asScripts(script.chat)
+  const searchScripts = asScripts(script.search ?? [{ type: 'text', text: 'grounded news' }, { type: 'finish', reason: 'STOP' }])
+  let chatIndex = 0
+  let searchIndex = 0
   const session = {
     thoughtSignatures: new Map<string, string>(),
     refreshIfNeeded: async () => oauth,
     cca: {
       async *chat(_oauth: unknown, input: ChatGenerateInput): AsyncIterable<CcaEvent> {
         chatBodies.push(input)
-        for (const event of script.chat ?? [{ type: 'finish', reason: 'STOP' }]) yield event
+        const events = chatScripts[Math.min(chatIndex, chatScripts.length - 1)] ?? [{ type: 'finish' as const, reason: 'STOP' }]
+        chatIndex += 1
+        for (const event of events) yield event
       },
       async *search(_oauth: unknown, input: SearchGenerateInput): AsyncIterable<CcaEvent> {
         searchQueries.push(input.query)
-        for (const event of script.search ?? [{ type: 'text', text: 'grounded news' }, { type: 'finish', reason: 'STOP' }]) {
-          yield event
-        }
+        const events = searchScripts[Math.min(searchIndex, searchScripts.length - 1)] ?? [{ type: 'text' as const, text: 'grounded news' }, { type: 'finish' as const, reason: 'STOP' }]
+        searchIndex += 1
+        for (const event of events) yield event
       },
     },
   } as unknown as AntigravitySession
   return { session, chatBodies, searchQueries }
+}
+
+function visibleText(chunks: StreamChunk[]): string {
+  return chunks
+    .filter(chunk => chunk.type === 'text-delta')
+    .map(chunk => chunk.text)
+    .join('')
+}
+
+function functionResponses(input: ChatGenerateInput | undefined): Array<{ name: string, result: unknown }> {
+  if (input === undefined) return []
+  const found: Array<{ name: string, result: unknown }> = []
+  for (const content of input.contents) {
+    for (const part of content.parts) {
+      if (!('functionResponse' in part)) continue
+      found.push({
+        name: part.functionResponse.name,
+        result: part.functionResponse.response.result,
+      })
+    }
+  }
+  return found
 }
 
 describe('AntigravityAdapter search', () => {
@@ -74,9 +108,12 @@ describe('AntigravityAdapter search', () => {
     expect(names).not.toContain('generate_image')
   })
 
-  it('runs googleSearch when the model forgets to call search_web', async () => {
+  it('runs googleSearch when the model forgets to call search_web, then continues the chat', async () => {
     const fake = fakeSession({
-      chat: [{ type: 'text', text: 'I will look that up.' }, { type: 'finish', reason: 'STOP' }],
+      chat: [
+        [{ type: 'text', text: 'I will look that up.' }, { type: 'finish', reason: 'STOP' }],
+        [{ type: 'text', text: '根据搜索，今天这些值得看。' }, { type: 'finish', reason: 'STOP' }],
+      ],
     })
     const adapter = createAntigravityAdapter(fake.session, {
       nativeTools: true,
@@ -84,20 +121,25 @@ describe('AntigravityAdapter search', () => {
     })
     const chunks = await collect(adapter.stream(options(NEWS)))
     expect(fake.searchQueries).toEqual([NEWS])
-    const text = chunks
-      .filter(chunk => chunk.type === 'text-delta')
-      .map(chunk => chunk.text)
-      .join('')
-    expect(text).toContain('grounded news')
+    expect(fake.chatBodies).toHaveLength(2)
+    const text = visibleText(chunks)
+    expect(text).toContain('I will look that up.')
+    expect(text).toContain('根据搜索，今天这些值得看。')
+    expect(text).not.toContain('grounded news')
+    expect(JSON.stringify(fake.chatBodies[1]?.contents)).toContain('grounded news')
+    expect(fake.chatBodies[1]?.system).toContain('same language the user used')
   })
 
   it('drops a hallucinated generate_image call and still searches news', async () => {
     const fake = fakeSession({
-      chat: [{
-        type: 'functionCall',
-        name: 'generate_image',
-        args: { prompt: 'kitten' },
-      }, { type: 'finish', reason: 'STOP' }],
+      chat: [
+        [{
+          type: 'functionCall',
+          name: 'generate_image',
+          args: { prompt: 'kitten' },
+        }, { type: 'finish', reason: 'STOP' }],
+        [{ type: 'text', text: '新闻如下。' }, { type: 'finish', reason: 'STOP' }],
+      ],
     })
     const adapter = createAntigravityAdapter(fake.session, {
       nativeTools: true,
@@ -105,14 +147,167 @@ describe('AntigravityAdapter search', () => {
     })
     const chunks = await collect(adapter.stream(options(NEWS)))
     expect(fake.searchQueries).toEqual([NEWS])
-    const text = chunks
-      .filter(chunk => chunk.type === 'text-delta')
-      .map(chunk => chunk.text)
-      .join('')
-    expect(text).toContain('grounded news')
+    const text = visibleText(chunks)
+    expect(text).toContain('新闻如下。')
+    expect(text).not.toContain('grounded news')
     expect(text).not.toContain('Image generation failed')
     const finish = chunks.find(chunk => chunk.type === 'finish')
     expect(finish).toEqual({ type: 'finish', reason: { kind: 'stop' } })
+  })
+
+  it('feeds search_web results back as a functionResponse and continues', async () => {
+    const fake = fakeSession({
+      chat: [
+        [{
+          type: 'functionCall',
+          id: 'call_search',
+          name: 'search_web',
+          args: { query: 'vendor official docs' },
+          thoughtSignature: 'sig-search',
+        }, { type: 'finish', reason: 'STOP' }],
+        [{ type: 'text', text: '按官方文档这样填。' }, { type: 'finish', reason: 'STOP' }],
+      ],
+    })
+    const adapter = createAntigravityAdapter(fake.session, {
+      nativeTools: true,
+      nativeSearch: true,
+    })
+    const chunks = await collect(adapter.stream(options('你查一下官方资料')))
+    expect(fake.searchQueries).toEqual(['vendor official docs'])
+    expect(fake.session.thoughtSignatures.get('call_search')).toBe('sig-search')
+    expect(visibleText(chunks)).toBe('按官方文档这样填。')
+    expect(visibleText(chunks)).not.toContain('grounded news')
+    expect(functionResponses(fake.chatBodies[1])).toEqual([
+      { name: 'search_web', result: 'grounded news' },
+    ])
+    const followUpCall = fake.chatBodies[1]?.contents
+      .flatMap(content => content.parts)
+      .find(part => 'functionCall' in part) as {
+        functionCall: { name: string, id?: string }
+        thoughtSignature?: string
+      }
+    expect(followUpCall?.functionCall.name).toBe('search_web')
+    expect(followUpCall?.thoughtSignature).toBe('sig-search')
+    expect(chunks.find(chunk => chunk.type === 'finish')).toEqual({
+      type: 'finish',
+      reason: { kind: 'stop' },
+    })
+    expect(chunks.some(chunk => chunk.type === 'tool-call-delta')).toBe(false)
+  })
+
+  it('searches a research prompt even when the model only thinks then stops', async () => {
+    const fake = fakeSession({
+      chat: [
+        [{ type: 'thought', text: 'Identifying the Target Platform' }, { type: 'finish', reason: 'STOP' }],
+        [{ type: 'text', text: '按官方文档这样配。' }, { type: 'finish', reason: 'STOP' }],
+      ],
+    })
+    const adapter = createAntigravityAdapter(fake.session, {
+      nativeTools: true,
+      nativeSearch: true,
+    })
+    const chunks = await collect(adapter.stream(options('帮我调研一下这个 API 官方怎么配')))
+    expect(fake.searchQueries).toHaveLength(1)
+    expect(fake.searchQueries[0]).toContain('调研')
+    expect(visibleText(chunks)).toContain('按官方文档这样配。')
+    expect(visibleText(chunks)).not.toContain('grounded news')
+    expect(chunks.find(chunk => chunk.type === 'finish')).toEqual({
+      type: 'finish',
+      reason: { kind: 'stop' },
+    })
+  })
+
+  it('continues a thought-only stop that is not a search prompt', async () => {
+    const fake = fakeSession({
+      chat: [
+        [{ type: 'thought', text: 'Hmm.' }, { type: 'finish', reason: 'STOP' }],
+        [{ type: 'text', text: '好的，我在。' }, { type: 'finish', reason: 'STOP' }],
+      ],
+    })
+    const adapter = createAntigravityAdapter(fake.session, {
+      nativeTools: true,
+      nativeSearch: true,
+    })
+    const chunks = await collect(adapter.stream(options('你好')))
+    expect(fake.searchQueries).toEqual([])
+    expect(fake.chatBodies).toHaveLength(2)
+    expect(JSON.stringify(fake.chatBodies[1]?.contents)).toContain('only internal reasoning')
+    expect(visibleText(chunks)).toBe('好的，我在。')
+  })
+
+  it('does not stop after a search_web loop with no user-visible answer', async () => {
+    const fake = fakeSession({
+      chat: [
+        [{
+          type: 'thought',
+          text: 'Need current docs.',
+        }, {
+          type: 'functionCall',
+          name: 'search_web',
+          args: { query: 'vendor docs query one' },
+        }, { type: 'finish', reason: 'STOP' }],
+        [{
+          type: 'functionCall',
+          name: 'search_web',
+          args: { query: 'vendor docs query two' },
+        }, { type: 'finish', reason: 'STOP' }],
+        [{
+          type: 'functionCall',
+          name: 'search_web',
+          args: { query: 'vendor docs query three' },
+        }, { type: 'finish', reason: 'STOP' }],
+        [{ type: 'text', text: '按官方文档这样配。' }, { type: 'finish', reason: 'STOP' }],
+      ],
+    })
+    const adapter = createAntigravityAdapter(fake.session, {
+      nativeTools: true,
+      nativeSearch: true,
+    })
+    const chunks = await collect(adapter.stream(options('帮我调研一下这个 API 官方怎么配')))
+    expect(fake.searchQueries).toEqual([
+      'vendor docs query one',
+      'vendor docs query two',
+      'vendor docs query three',
+    ])
+    expect(fake.chatBodies.length).toBeGreaterThanOrEqual(4)
+    const answerTurn = fake.chatBodies.at(-1)
+    expect(answerTurn?.functions.some(tool => tool.name === 'search_web')).toBe(false)
+    expect(visibleText(chunks)).toContain('按官方文档这样配。')
+    expect(chunks.find(chunk => chunk.type === 'finish')).toEqual({
+      type: 'finish',
+      reason: { kind: 'stop' },
+    })
+  })
+
+  it('lets the model call ordinary tools after search_web returns', async () => {
+    const fake = fakeSession({
+      chat: [
+        [{
+          type: 'functionCall',
+          name: 'search_web',
+          args: { query: 'vendor context window' },
+        }, { type: 'finish', reason: 'STOP' }],
+        [{
+          type: 'functionCall',
+          id: 'call_read',
+          name: 'read_file',
+          args: { path: '/tmp/settings.yaml' },
+        }, { type: 'finish', reason: 'STOP' }],
+      ],
+    })
+    const adapter = createAntigravityAdapter(fake.session, {
+      nativeTools: true,
+      nativeSearch: true,
+    })
+    const chunks = await collect(adapter.stream(options('对照文档再决定怎么写')))
+    expect(fake.searchQueries).toEqual(['vendor context window'])
+    expect(visibleText(chunks)).toBe('')
+    const tool = chunks.find(chunk => chunk.type === 'tool-call-delta')
+    expect(tool).toMatchObject({ name: 'read_file', id: 'call_read' })
+    expect(chunks.find(chunk => chunk.type === 'finish')).toEqual({
+      type: 'finish',
+      reason: { kind: 'tool-calls' },
+    })
   })
 
   it('replays thought_signature on the next CCA functionCall part', async () => {

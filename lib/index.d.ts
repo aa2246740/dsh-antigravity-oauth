@@ -226,7 +226,10 @@ declare class AntigravityAdapter extends LlmAdapter {
   listModels(provider: string): Promise<readonly LlmModelInfo[]>;
   resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo>;
   stream(options: GenerateOptions): AsyncIterable<StreamChunk>;
-  private emit;
+  private emitChat;
+  private collectSearch;
+  private closeText;
+  private closeThought;
   private emitImage;
 }
 declare function createAntigravityAdapter(session: AntigravitySession, options: AntigravityAdapterOptions): AntigravityAdapter;
@@ -255,6 +258,26 @@ declare const LOAD_CODE_ASSIST_BODY: Readonly<{
 }>;
 declare function authorizationUrl(state: string, redirectUri?: string): string;
 //#endregion
+//#region src/search-turn.d.ts
+declare const SEARCH_FOLLOW_UP_LIMIT = 3;
+declare const SEARCH_CONTINUE_GUIDANCE = "Search results are source material for you, not the user-facing answer. Continue the original task. Reply in the same language the user used. Use other tools if you still need local files or commands.";
+type SearchTurnCall = {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+  thoughtSignature?: string;
+};
+declare function appendSearchTurns(contents: readonly GeminiContent[], calls: readonly SearchTurnCall[], results: readonly string[]): GeminiContent[];
+declare function appendSearchMemo(contents: readonly GeminiContent[], query: string, result: string): GeminiContent[];
+declare const THOUGHT_ONLY_CONTINUE = "You produced only internal reasoning and stopped. Continue the original user task now. If you need public documentation or current product facts, call search_web. Then answer in the same language the user used. Do not stop after thinking.";
+declare const SEARCH_ANSWER_GUIDANCE = "You already ran web search. The results above are source material. Answer the user now in their language. Do not call search_web. Use other tools only if you still need local files.";
+declare function withoutSearchWeb(functions: readonly FunctionToolDeclaration[]): FunctionToolDeclaration[];
+declare function appendSearchDossier(contents: readonly GeminiContent[], rounds: readonly {
+  query: string;
+  result: string;
+}[]): GeminiContent[];
+declare function appendContinueMemo(contents: readonly GeminiContent[]): GeminiContent[];
+//#endregion
 //#region src/index.d.ts
 type NativeAssembly = {
   tools: {
@@ -281,4 +304,4 @@ declare const name = "llm-antigravity-oauth";
 declare const inject: string[];
 declare function apply(ctx: Context, config: Config): void;
 //#endregion
-export { AUTH_COMPLETE_PATH, AUTH_FILENAME, AUTH_LOGIN_PATH, AUTH_LOGOUT_PATH, AUTH_STATUS_PATH, AntigravityCredentialStore, type AntigravityOAuth, AntigravitySession, BOOT_MARKER, CcaClient, type CcaKind, type CcaSession, Config, type Config as PluginConfig, HARNESS_ROUTE, LOAD_CODE_ASSIST_BODY, SCOPES, antigravityAuthPath, apply, authorizationUrl, buildCcaBody, createAntigravityAdapter, createCcaSession, inject, name, registerAntigravityAuthRoutes, streamGenerateContentUrl };
+export { AUTH_COMPLETE_PATH, AUTH_FILENAME, AUTH_LOGIN_PATH, AUTH_LOGOUT_PATH, AUTH_STATUS_PATH, AntigravityCredentialStore, type AntigravityOAuth, AntigravitySession, BOOT_MARKER, CcaClient, type CcaKind, type CcaSession, Config, type Config as PluginConfig, HARNESS_ROUTE, LOAD_CODE_ASSIST_BODY, SCOPES, SEARCH_ANSWER_GUIDANCE, SEARCH_CONTINUE_GUIDANCE, SEARCH_FOLLOW_UP_LIMIT, THOUGHT_ONLY_CONTINUE, antigravityAuthPath, appendContinueMemo, appendSearchDossier, appendSearchMemo, appendSearchTurns, apply, authorizationUrl, buildCcaBody, createAntigravityAdapter, createCcaSession, inject, name, registerAntigravityAuthRoutes, streamGenerateContentUrl, withoutSearchWeb };

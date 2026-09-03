@@ -80,9 +80,7 @@ export function parseCcaChunk(raw: unknown): CcaEvent[] {
       if (part.thought === true && typeof part.text === 'string') {
         if (partSignature !== undefined) lastThoughtSignature = partSignature
         events.push({ type: 'thought', text: part.text })
-        continue
-      }
-      if (typeof part.text === 'string' && part.text.length > 0) {
+      } else if (typeof part.text === 'string' && part.text.length > 0) {
         events.push({ type: 'text', text: part.text })
       }
       if (isRecord(part.functionCall) && typeof part.functionCall.name === 'string') {

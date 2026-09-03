@@ -70,6 +70,8 @@ describe('native tools', () => {
 
   it('detects search intent without treating image prompts as search', () => {
     expect(wantsNativeSearch('搜搜新闻看看最近 12 小时科技圈值得关注的新闻')).toBe(true)
+    expect(wantsNativeSearch('帮我调研一下这个 API 官方怎么配')).toBe(true)
+    expect(wantsNativeSearch('你查一下官方的资料，看看我应该怎么填？ 有资料吗')).toBe(true)
     expect(wantsNativeSearch('给我生成一张小猫图')).toBe(false)
     expect(wantsNativeSearch('你好')).toBe(false)
   })
@@ -84,6 +86,7 @@ describe('native tools', () => {
     expect(masked.sections.some(section => section.name === 'tool:web_search')).toBe(false)
     const guidance = masked.sections.find(section => section.name === 'antigravity:native-tools')?.text ?? ''
     expect(guidance).toContain('This route has no image generation')
+    expect(guidance).toContain('tool result')
     expect(guidance).not.toContain('Call generate_image only')
   })
 })
