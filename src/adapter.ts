@@ -25,10 +25,30 @@ import {
   isSearchWebToolName,
   latestUserText,
   parseSearchWebArgs,
+  SEARCH_WEB_TOOL,
   wantsNativeSearch,
 } from './native-tools.ts'
+import {
+  appendContinueMemo,
+  appendSearchDossier,
+  appendSearchMemo,
+  appendSearchTurns,
+  SEARCH_ANSWER_GUIDANCE,
+  SEARCH_FOLLOW_UP_LIMIT,
+  type SearchTurnCall,
+  withoutSearchWeb,
+  withSearchContinueGuidance,
+} from './search-turn.ts'
 import type { AntigravitySession } from './session.ts'
-import type { CcaEvent, FunctionToolDeclaration, GeminiContent, GeminiPart, ReasoningEffort } from './types.ts'
+import type {
+  CcaEvent,
+  CcaUsage,
+  ChatGenerateInput,
+  FunctionToolDeclaration,
+  GeminiContent,
+  GeminiPart,
+  ReasoningEffort,
+} from './types.ts'
 
 export interface AntigravityAdapterOptions {
   nativeTools: boolean
@@ -120,6 +140,31 @@ function functionsFor(
   return ccaFunctionDeclarations(options.tools, nativeSearch)
 }
 
+function mergeUsage(base: TokenUsage | undefined, extra: CcaUsage | undefined): TokenUsage | undefined {
+  if (extra === undefined) return base
+  const reasoningTokens = (base?.reasoningTokens ?? 0) + (extra.reasoningTokens ?? 0)
+  const cacheReadTokens = extra.cacheReadTokens ?? base?.cacheReadTokens
+  return {
+    inputTokens: (base?.inputTokens ?? 0) + extra.inputTokens,
+    outputTokens: (base?.outputTokens ?? 0) + extra.outputTokens,
+    ...reasoningTokens > 0 ? { reasoningTokens } : {},
+    ...cacheReadTokens === undefined ? {} : { cacheReadTokens },
+  }
+}
+
+type EmitState = {
+  index: number
+  text: string
+  thought: string
+  usage: TokenUsage | undefined
+  toolNames: string[]
+  finish: string | undefined
+  depth: number
+  sawVisibleAnswer: boolean
+  searchRounds: { query: string, result: string }[]
+  answerPass: boolean
+}
+
 export class AntigravityAdapter extends LlmAdapter {
   constructor(
     private readonly session: AntigravitySession,
@@ -180,7 +225,7 @@ export class AntigravityAdapter extends LlmAdapter {
     const effort = effortOf(options)
     const wire = routeChatModel(options.model, effort)
     const functions = functionsFor(options, this.options.nativeSearch)
-    const events = this.session.cca.chat(oauth, {
+    const input: ChatGenerateInput = {
       kind: 'chat',
       model: wire,
       contents: convertMessages(options.messages, this.session.thoughtSignatures),
@@ -189,160 +234,34 @@ export class AntigravityAdapter extends LlmAdapter {
       ...thinkingLevelFor(options.model, effort) === undefined
         ? {}
         : { thinkingLevel: thinkingLevelFor(options.model, effort) },
-    }, options.signal)
-    yield* this.emit(options, events)
-  }
-
-  private async *emit(options: GenerateOptions, events: AsyncIterable<CcaEvent>): AsyncIterable<StreamChunk> {
-    let index = 0
-    let text = ''
-    let thought = ''
-    let usage: TokenUsage | undefined
-    let finish: string | undefined
-    const toolNames: string[] = []
-    const pendingSearches: string[] = []
-    const attachments = this.options.resolveAttachments?.()
+    }
+    const state: EmitState = {
+      index: 0,
+      text: '',
+      thought: '',
+      usage: undefined,
+      toolNames: [],
+      finish: undefined,
+      depth: 0,
+      sawVisibleAnswer: false,
+      searchRounds: [],
+      answerPass: false,
+    }
     const idleMs = this.options.streamIdleTimeoutMs ?? STREAM_IDLE_TIMEOUT_MS
     const watchdog = options.signal === undefined
       ? AbortSignal.timeout(idleMs)
       : AbortSignal.any([options.signal, AbortSignal.timeout(idleMs)])
-
-    const closeText = function* (): Generator<StreamChunk> {
-      if (text.length === 0) return
-      yield { type: 'block-end', index, block: { type: 'text', text } }
-      index += 1
-      text = ''
-    }
-    const closeThought = function* (): Generator<StreamChunk> {
-      if (thought.length === 0) return
-      yield { type: 'block-end', index, block: { type: 'reasoning', text: thought } }
-      index += 1
-      thought = ''
-    }
-
     try {
-      for await (const event of events) {
-        if (watchdog.aborted) throw new LlmError('Antigravity stream idle timeout', 'TIMEOUT')
-        if (event.type === 'usage') {
-          usage = {
-            inputTokens: event.usage.inputTokens,
-            outputTokens: event.usage.outputTokens,
-            ...event.usage.reasoningTokens === undefined ? {} : { reasoningTokens: event.usage.reasoningTokens },
-            ...event.usage.cacheReadTokens === undefined ? {} : { cacheReadTokens: event.usage.cacheReadTokens },
-          }
-          continue
-        }
-        if (event.type === 'thought') {
-          yield* closeText()
-          if (thought.length === 0) yield { type: 'block-start', index, blockType: 'reasoning' }
-          thought += event.text
-          yield { type: 'reasoning-delta', index, text: event.text }
-          continue
-        }
-        if (event.type === 'text') {
-          yield* closeThought()
-          if (text.length === 0) yield { type: 'block-start', index, blockType: 'text' }
-          text += event.text
-          yield { type: 'text-delta', index, text: event.text }
-          continue
-        }
-        if (event.type === 'functionCall') {
-          yield* closeThought()
-          yield* closeText()
-          if (isDroppedToolName(event.name)) continue
-          if (isSearchWebToolName(event.name) && this.options.nativeSearch) {
-            pendingSearches.push(parseSearchWebArgs(event.args))
-            continue
-          }
-          const id = CallId(event.id ?? `call_${index}`)
-          if (event.thoughtSignature !== undefined && event.thoughtSignature.length > 0) {
-            this.session.thoughtSignatures.set(id, event.thoughtSignature)
-          }
-          const args = JSON.stringify(event.args)
-          yield { type: 'block-start', index, blockType: 'tool-call' }
-          yield { type: 'tool-call-delta', index, id, name: event.name, argumentsDelta: args }
-          yield {
-            type: 'block-end',
-            index,
-            block: { type: 'tool-call', id, name: event.name, arguments: args },
-          }
-          toolNames.push(event.name)
-          index += 1
-          continue
-        }
-        if (event.type === 'inlineImage') {
-          yield* closeThought()
-          yield* closeText()
-          yield* this.emitImage(index, event.mimeType, event.data, attachments)
-          index += 1
-          continue
-        }
-        if (event.type === 'finish') finish = event.reason
-      }
-
-      const latest = latestUserText(options.messages)
-      if (
-        pendingSearches.length === 0
-        && toolNames.length === 0
-        && this.options.nativeSearch
-        && wantsNativeSearch(latest)
-      ) {
-        pendingSearches.push(latest)
-      }
-
-      if (pendingSearches.length > 0) {
-        const oauth = await this.session.refreshIfNeeded()
-        if (oauth === undefined) {
-          throw new LlmError(
-            'Antigravity is not connected. Open Settings and sign in.',
-            'MISSING_CREDENTIAL',
-          )
-        }
-        const effort = effortOf(options)
-        if (!isPublicModelId(options.model)) {
-          throw new LlmError(`unknown Antigravity model "${options.model}"`, 'UNKNOWN_MODEL')
-        }
-        const searchModel = options.model
-        for (const query of pendingSearches) {
-          for await (const event of this.session.cca.search(oauth, {
-            kind: 'search',
-            model: routeChatModel(searchModel, effort),
-            query,
-            ...thinkingLevelFor(searchModel, effort) === undefined
-              ? {}
-              : { thinkingLevel: thinkingLevelFor(searchModel, effort) },
-          }, options.signal)) {
-            if (event.type === 'thought') {
-              yield* closeText()
-              if (thought.length === 0) yield { type: 'block-start', index, blockType: 'reasoning' }
-              thought += event.text
-              yield { type: 'reasoning-delta', index, text: event.text }
-            }
-            if (event.type === 'text') {
-              yield* closeThought()
-              if (text.length === 0) yield { type: 'block-start', index, blockType: 'text' }
-              text += event.text
-              yield { type: 'text-delta', index, text: event.text }
-            }
-            if (event.type === 'usage') {
-              usage = {
-                inputTokens: (usage?.inputTokens ?? 0) + event.usage.inputTokens,
-                outputTokens: (usage?.outputTokens ?? 0) + event.usage.outputTokens,
-              }
-            }
-          }
-        }
-      }
-
-      yield* closeThought()
-      yield* closeText()
-      if (usage !== undefined) yield { type: 'usage', usage }
-      const kind = toolNames.length > 0
+      yield* this.emitChat(options, input, state, watchdog)
+      yield* this.closeThought(state)
+      yield* this.closeText(state)
+      if (state.usage !== undefined) yield { type: 'usage', usage: state.usage }
+      const kind = state.toolNames.length > 0
         ? 'tool-calls' as const
-        : finish === 'MAX_TOKENS'
+        : state.finish === 'MAX_TOKENS'
           ? 'max-tokens' as const
           : 'stop' as const
-      if (kind === 'stop' && index === 0) {
+      if (kind === 'stop' && state.index === 0) {
         yield {
           type: 'finish',
           reason: {
@@ -367,6 +286,211 @@ export class AntigravityAdapter extends LlmAdapter {
             : 'TRANSPORT'
       throw new LlmError(message, code, { cause: error })
     }
+  }
+
+  private async *emitChat(
+    options: GenerateOptions,
+    input: ChatGenerateInput,
+    state: EmitState,
+    watchdog: AbortSignal,
+  ): AsyncIterable<StreamChunk> {
+    const oauth = await this.session.refreshIfNeeded()
+    if (oauth === undefined) {
+      throw new LlmError(
+        'Antigravity is not connected. Open Settings and sign in.',
+        'MISSING_CREDENTIAL',
+      )
+    }
+    const pendingSearches: SearchTurnCall[] = []
+    const attachments = this.options.resolveAttachments?.()
+    for await (const event of this.session.cca.chat(oauth, input, options.signal)) {
+      if (watchdog.aborted) throw new LlmError('Antigravity stream idle timeout', 'TIMEOUT')
+      if (event.type === 'usage') {
+        state.usage = mergeUsage(state.usage, event.usage)
+        continue
+      }
+      if (event.type === 'thought') {
+        yield* this.closeText(state)
+        if (state.thought.length === 0) yield { type: 'block-start', index: state.index, blockType: 'reasoning' }
+        state.thought += event.text
+        yield { type: 'reasoning-delta', index: state.index, text: event.text }
+        continue
+      }
+      if (event.type === 'text') {
+        yield* this.closeThought(state)
+        if (state.text.length === 0) yield { type: 'block-start', index: state.index, blockType: 'text' }
+        state.text += event.text
+        state.sawVisibleAnswer = true
+        yield { type: 'text-delta', index: state.index, text: event.text }
+        continue
+      }
+      if (event.type === 'functionCall') {
+        yield* this.closeThought(state)
+        yield* this.closeText(state)
+        if (isDroppedToolName(event.name)) continue
+        if (isSearchWebToolName(event.name) && this.options.nativeSearch) {
+          const id = CallId(event.id ?? `search_${state.index}`)
+          if (event.thoughtSignature !== undefined && event.thoughtSignature.length > 0) {
+            this.session.thoughtSignatures.set(id, event.thoughtSignature)
+          }
+          pendingSearches.push({
+            id,
+            name: event.name === 'web_search' ? SEARCH_WEB_TOOL : event.name,
+            args: event.args,
+            ...event.thoughtSignature === undefined || event.thoughtSignature.length === 0
+              ? {}
+              : { thoughtSignature: event.thoughtSignature },
+          })
+          continue
+        }
+        const id = CallId(event.id ?? `call_${state.index}`)
+        if (event.thoughtSignature !== undefined && event.thoughtSignature.length > 0) {
+          this.session.thoughtSignatures.set(id, event.thoughtSignature)
+        }
+        const args = JSON.stringify(event.args)
+        yield { type: 'block-start', index: state.index, blockType: 'tool-call' }
+        yield { type: 'tool-call-delta', index: state.index, id, name: event.name, argumentsDelta: args }
+        yield {
+          type: 'block-end',
+          index: state.index,
+          block: { type: 'tool-call', id, name: event.name, arguments: args },
+        }
+        state.toolNames.push(event.name)
+        state.index += 1
+        state.sawVisibleAnswer = true
+        continue
+      }
+      if (event.type === 'inlineImage') {
+        yield* this.closeThought(state)
+        yield* this.closeText(state)
+        yield* this.emitImage(state.index, event.mimeType, event.data, attachments)
+        state.index += 1
+        state.sawVisibleAnswer = true
+        continue
+      }
+      if (event.type === 'finish') state.finish = event.reason
+    }
+
+    const skipFollowUp = options.purpose === 'compaction' || options.purpose === 'session-title'
+    const allowMoreSearch = !state.answerPass
+      && !skipFollowUp
+      && this.options.nativeSearch
+      && state.searchRounds.length < SEARCH_FOLLOW_UP_LIMIT
+    let memoQuery: string | undefined
+    if (
+      allowMoreSearch
+      && pendingSearches.length === 0
+      && state.toolNames.length === 0
+      && state.searchRounds.length === 0
+      && state.depth === 0
+    ) {
+      const latest = latestUserText(options.messages)
+      if (wantsNativeSearch(latest)) memoQuery = latest
+    }
+
+    if (allowMoreSearch && (pendingSearches.length > 0 || memoQuery !== undefined)) {
+      if (pendingSearches.length > 0) {
+        for (const call of pendingSearches) {
+          const query = parseSearchWebArgs(call.args)
+          const collected = await this.collectSearch(options, query, watchdog)
+          state.usage = mergeUsage(state.usage, collected.usage)
+          state.searchRounds.push({ query, result: collected.text })
+        }
+      } else if (memoQuery !== undefined) {
+        const collected = await this.collectSearch(options, memoQuery, watchdog)
+        state.usage = mergeUsage(state.usage, collected.usage)
+        state.searchRounds.push({ query: memoQuery, result: collected.text })
+      }
+      const last = state.searchRounds.at(-1)
+      const contents = pendingSearches.length > 0
+        ? appendSearchTurns(
+          input.contents,
+          pendingSearches,
+          pendingSearches.map((_, index) => state.searchRounds[state.searchRounds.length - pendingSearches.length + index]?.result ?? ''),
+        )
+        : appendSearchMemo(input.contents, memoQuery ?? '', last?.result ?? '')
+      const moreSearch = state.searchRounds.length < SEARCH_FOLLOW_UP_LIMIT
+      if (moreSearch) {
+        state.depth += 1
+        yield* this.emitChat(options, {
+          ...input,
+          contents,
+          system: withSearchContinueGuidance(input.system),
+        }, state, watchdog)
+        if (state.sawVisibleAnswer || state.toolNames.length > 0) return
+      } else {
+        input = { ...input, contents }
+      }
+    }
+
+    if (skipFollowUp || state.sawVisibleAnswer || state.toolNames.length > 0) return
+    if (state.answerPass && state.depth >= SEARCH_FOLLOW_UP_LIMIT) return
+
+    state.depth += 1
+    if (state.searchRounds.length > 0 && !state.answerPass) {
+      state.answerPass = true
+      yield* this.emitChat(options, {
+        ...input,
+        contents: appendSearchDossier(input.contents, state.searchRounds),
+        functions: withoutSearchWeb(input.functions),
+        system: withSearchContinueGuidance(`${input.system ?? ''}\n\n${SEARCH_ANSWER_GUIDANCE}`),
+      }, state, watchdog)
+      return
+    }
+    yield* this.emitChat(options, {
+      ...input,
+      contents: appendContinueMemo(input.contents),
+      functions: state.answerPass ? withoutSearchWeb(input.functions) : input.functions,
+      system: withSearchContinueGuidance(input.system),
+    }, state, watchdog)
+  }
+
+  private async collectSearch(
+    options: GenerateOptions,
+    query: string,
+    watchdog: AbortSignal,
+  ): Promise<{ text: string, usage?: CcaUsage }> {
+    const oauth = await this.session.refreshIfNeeded()
+    if (oauth === undefined) {
+      throw new LlmError(
+        'Antigravity is not connected. Open Settings and sign in.',
+        'MISSING_CREDENTIAL',
+      )
+    }
+    if (!isPublicModelId(options.model)) {
+      throw new LlmError(`unknown Antigravity model "${options.model}"`, 'UNKNOWN_MODEL')
+    }
+    const effort = effortOf(options)
+    let text = ''
+    let usage: CcaUsage | undefined
+    for await (const event of this.session.cca.search(oauth, {
+      kind: 'search',
+      model: routeChatModel(options.model, effort),
+      query,
+      ...thinkingLevelFor(options.model, effort) === undefined
+        ? {}
+        : { thinkingLevel: thinkingLevelFor(options.model, effort) },
+    }, options.signal)) {
+      if (watchdog.aborted) throw new LlmError('Antigravity stream idle timeout', 'TIMEOUT')
+      if (event.type === 'text') text += event.text
+      if (event.type === 'usage') usage = event.usage
+    }
+    const trimmed = text.trim()
+    return { text: trimmed.length > 0 ? trimmed : '(no search results)', usage }
+  }
+
+  private *closeText(state: EmitState): Generator<StreamChunk> {
+    if (state.text.length === 0) return
+    yield { type: 'block-end', index: state.index, block: { type: 'text', text: state.text } }
+    state.index += 1
+    state.text = ''
+  }
+
+  private *closeThought(state: EmitState): Generator<StreamChunk> {
+    if (state.thought.length === 0) return
+    yield { type: 'block-end', index: state.index, block: { type: 'reasoning', text: state.thought } }
+    state.index += 1
+    state.thought = ''
   }
 
   private async *emitImage(

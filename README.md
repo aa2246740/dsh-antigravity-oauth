@@ -87,7 +87,10 @@ Cloud Code Assist **v1internal cannot mix** built-in `googleSearch` with `functi
 
 - exposes `search_web` to the model
 - runs that search as its own googleSearch-only round trip
-- keeps ordinary tools (`bash`, `skill`, …) on the main turn
+- feeds the grounded result back as a `functionResponse` (or a source memo if the model never called the tool)
+- continues the same chat with the original system prompt, tools, and language — the grounded dump is **not** the user-facing answer
+- if the model only thinks and then stops (no text, no tools), the plugin nudges the same turn to continue — and will search when the user asked to look something up
+- keeps ordinary tools (`bash`, `skill`, …) available on that follow-up turn
 
 **If a turn 400s, TRANSPORT-storms, or leaves an unfinished tool call: start a new chat. Do not Continue that session.** Scarred transcripts keep failing.
 

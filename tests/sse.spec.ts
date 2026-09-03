@@ -24,4 +24,29 @@ describe('parseCcaChunk thought signatures', () => {
       thoughtSignature: 'sig-from-part',
     })
   })
+
+  it('still reads functionCall when Gemini puts it on a thought part', () => {
+    const events = parseCcaChunk({
+      response: {
+        candidates: [{
+          content: {
+            parts: [{
+              thought: true,
+              text: 'I should search.',
+              thoughtSignature: 'sig-thought',
+              functionCall: { name: 'search_web', args: { query: 'vendor docs' }, id: 'call_s' },
+            }],
+          },
+          finishReason: 'STOP',
+        }],
+      },
+    })
+    expect(events.filter(event => event.type === 'thought')).toHaveLength(1)
+    expect(events.find(event => event.type === 'functionCall')).toMatchObject({
+      type: 'functionCall',
+      name: 'search_web',
+      id: 'call_s',
+      thoughtSignature: 'sig-thought',
+    })
+  })
 })

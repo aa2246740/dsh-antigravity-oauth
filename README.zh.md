@@ -87,7 +87,10 @@ Cloud Code Assist **v1internal 不能**在同一次请求里同时带内置 `goo
 
 - 给模型看 `search_web`
 - 搜索单独走一轮只有 googleSearch 的请求
-- 普通工具（`bash`、`skill` 等）留在主回合
+- 把检索结果作为 `functionResponse` 交回（模型没调工具时则写成源材料备忘）
+- **同一轮对话继续走**：带着原来的 system、工具、用户语言；接地长文不是给用户看的最终答复
+- 模型如果只想了一下就停（没有正文、没有工具），同一轮会被推着继续；用户是在让它查资料时会先搜再答
+- 普通工具（`bash`、`skill` 等）在这场 follow-up 里仍可调用
 
 **某一轮 400、TRANSPORT 连打、或留下未完成的 tool call：开新对话。不要 Continue 那个会话。** 带伤的 transcript 会一直失败。
 
