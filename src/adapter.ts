@@ -1,4 +1,4 @@
-import { CallId, LlmAdapter, LlmError, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import { LlmAdapter, LlmError, ReasoningEffortId, ToolCallId } from '@deepseek-ai/dsh-llm'
 import type {
   ContentBlock,
   GenerateOptions,
@@ -329,7 +329,7 @@ export class AntigravityAdapter extends LlmAdapter {
         yield* this.closeText(state)
         if (isDroppedToolName(event.name)) continue
         if (isSearchWebToolName(event.name) && this.options.nativeSearch) {
-          const id = CallId(event.id ?? `search_${state.index}`)
+          const id = ToolCallId(event.id ?? `search_${state.index}`)
           if (event.thoughtSignature !== undefined && event.thoughtSignature.length > 0) {
             this.session.thoughtSignatures.set(id, event.thoughtSignature)
           }
@@ -343,7 +343,7 @@ export class AntigravityAdapter extends LlmAdapter {
           })
           continue
         }
-        const id = CallId(event.id ?? `call_${state.index}`)
+        const id = ToolCallId(event.id ?? `call_${state.index}`)
         if (event.thoughtSignature !== undefined && event.thoughtSignature.length > 0) {
           this.session.thoughtSignatures.set(id, event.thoughtSignature)
         }

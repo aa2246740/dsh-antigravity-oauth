@@ -45,7 +45,7 @@
     },
     "client": {
       "inject": [
-        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-renderer",
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-locale"
       ],
@@ -53,22 +53,21 @@
     }
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": "^0.82.1",
-    "@deepseek-ai/cordis": "^4.0.1-rc.1",
+    "@deepseek-ai/cordis": "^4.0.2",
     "@deepseek-ai/dsh-atomic-write": "*",
     "@deepseek-ai/dsh-attachment": "*",
     "@deepseek-ai/dsh-home-paths": "*",
     "@deepseek-ai/dsh-host-webserver": "*",
     "@deepseek-ai/dsh-invariants": "*",
     "@deepseek-ai/dsh-llm": "*",
-    "@deepseek-ai/dsh-llm-pi-ai": "*",
-    "@deepseek-ai/schemastery": "^3.18.1-rc.1",
+    "@deepseek-ai/dsh-client-locale": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-renderer": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-settings": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.1.2-rc.1",
+    "@deepseek-ai/schemastery": "^3.18.2",
     "react": "^18.2.0"
   },
   "peerDependenciesMeta": {
-    "@earendil-works/pi-ai": {
-      "optional": true
-    },
     "@deepseek-ai/cordis": {
       "optional": true
     },
@@ -90,7 +89,16 @@
     "@deepseek-ai/dsh-llm": {
       "optional": true
     },
-    "@deepseek-ai/dsh-llm-pi-ai": {
+    "@deepseek-ai/dsh-client-locale": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-ui-renderer": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-ui-settings": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-ui-slots": {
       "optional": true
     },
     "@deepseek-ai/schemastery": {
@@ -101,21 +109,18 @@
     }
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "0.82.1",
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-atomic-write": "0.1.0-rc.8",
-    "@deepseek-ai/dsh-attachment": "0.1.0-rc.8",
-    "@deepseek-ai/dsh-client-locale": "0.1.0-rc.8",
-    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.8",
-    "@deepseek-ai/dsh-client-ui-settings": "0.1.0-rc.8",
-    "@deepseek-ai/dsh-client-ui-slots": "0.1.0-rc.8",
-    "@deepseek-ai/dsh-home-paths": "0.1.0-rc.8",
-    "@deepseek-ai/dsh-host-webserver": "0.1.0-rc.8",
-    "@deepseek-ai/dsh-invariants": "0.1.0-rc.8",
-    "@deepseek-ai/dsh-llm": "0.1.0-rc.8",
-    "@deepseek-ai/dsh-llm-pi-ai": "0.1.0-rc.8",
-    "@deepseek-ai/dsh-timeout": "0.1.0-rc.8",
-    "@deepseek-ai/schemastery": "3.18.1",
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/dsh-atomic-write": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-attachment": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-locale": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-settings": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-home-paths": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-host-webserver": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-invariants": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-llm": "0.1.2-rc.1",
+    "@deepseek-ai/schemastery": "3.18.2",
     "@types/node": "^22.20.0",
     "@types/react": "~18.3.1",
     "react": "^18.2.0",

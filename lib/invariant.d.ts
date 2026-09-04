@@ -1,4 +1,5 @@
 import { Context } from "@deepseek-ai/cordis";
+
 //#region src/invariant.d.ts
 declare const name = "antigravity-oauth-invariant";
 declare const inject: string[];

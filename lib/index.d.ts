@@ -2,6 +2,7 @@ import { GenerateOptions, LlmAdapter, LlmModelInfo, LlmProviderInfo, LlmResolved
 import z from "@deepseek-ai/schemastery";
 import { Context } from "@deepseek-ai/cordis";
 import { AttachmentStore } from "@deepseek-ai/dsh-attachment";
+
 //#region src/plugin-config.d.ts
 interface Config {
   streamIdleTimeoutMs?: number;
