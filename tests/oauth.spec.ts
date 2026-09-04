@@ -8,7 +8,7 @@ describe('oauth helpers', () => {
     expect(url.searchParams.get('client_id')).toBe(CLIENT_ID)
     expect(url.searchParams.get('redirect_uri')).toBe(CALLBACK_URI)
     expect(url.searchParams.get('access_type')).toBe('offline')
-    expect(url.searchParams.get('prompt')).toBe('consent')
+    expect(url.searchParams.get('prompt')).toBe('select_account consent')
     expect(url.searchParams.get('scope')?.split(' ')).toEqual([...SCOPES])
   })
 

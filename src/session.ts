@@ -33,6 +33,7 @@ export class AntigravitySession {
   private lastRefreshAttempt = 0
   private operation: Promise<void> | undefined
   private cancellation: AbortController | undefined
+  private listening: Promise<void> | undefined
   private pendingUrl: string | undefined
   private pendingState: string | undefined
   private callbackServer: ReturnType<typeof createServer> | undefined
@@ -91,9 +92,14 @@ export class AntigravitySession {
 
   async signIn(): Promise<{ url: string }> {
     if (this.operation === undefined) this.startLogin()
-    if (this.pendingUrl !== undefined) return { url: this.pendingUrl }
+    try {
+      await this.listening
+    } catch {
+      await this.operation?.catch(() => undefined)
+    }
+    if (this.pendingUrl !== undefined && this.account.status === 'signing-in') return { url: this.pendingUrl }
     await this.operation?.catch(() => undefined)
-    if (this.pendingUrl !== undefined) return { url: this.pendingUrl }
+    if (this.pendingUrl !== undefined && this.account.status === 'signing-in') return { url: this.pendingUrl }
     if (this.account.status === 'error') throw new Error(this.account.message)
     const stored = await this.readStored()
     if (stored.status === 'signed-in') throw new Error('already signed in')
@@ -125,17 +131,23 @@ export class AntigravitySession {
   async signOut(): Promise<void> {
     this.cancellation?.abort(new Error('Antigravity login cancelled'))
     await this.operation?.catch(() => undefined)
-    this.stopCallbackServer()
+    await this.stopCallbackServer()
     await this.store.clear()
     this.account = { status: 'signed-out' }
     this.pendingUrl = undefined
     this.pendingState = undefined
+    this.operation = undefined
+    this.cancellation = undefined
+    this.listening = undefined
   }
 
   async dispose(): Promise<void> {
     this.cancellation?.abort(new Error('Antigravity plugin disposed'))
     await this.operation?.catch(() => undefined)
-    this.stopCallbackServer()
+    await this.stopCallbackServer()
+    this.operation = undefined
+    this.cancellation = undefined
+    this.listening = undefined
   }
 
   private startLogin(): void {
@@ -151,25 +163,63 @@ export class AntigravitySession {
     this.pendingUrl = url
     this.account = { status: 'signing-in', url }
     void ensureAntigravityVersion(this.fetchImpl, cancellation.signal)
-    this.operation = this.listenForCallback(state, cancellation.signal).then(
-      async code => {
-        const credential = await completeOAuthLogin(code, this.fetchImpl, Date.now(), cancellation.signal)
-        await this.store.write(credential)
-        this.account = await this.readStored()
-      },
-      (error: unknown) => {
-        if (this.account.status === 'signed-in') return
-        this.account = { status: 'error', message: safeMessage(error) }
-      },
-    ).finally(() => {
+    let markListening: () => void = () => undefined
+    let failListening: (error: Error) => void = () => undefined
+    this.listening = new Promise<void>((resolve, reject) => {
+      markListening = resolve
+      failListening = reject
+    })
+    this.operation = this.runLogin(state, cancellation.signal, markListening, failListening)
+    void this.operation.finally(() => {
       this.operation = undefined
-      this.cancellation = undefined
-      this.stopCallbackServer()
     })
   }
 
-  private listenForCallback(state: string, signal: AbortSignal): Promise<string> {
+  private async runLogin(
+    state: string,
+    signal: AbortSignal,
+    markListening: () => void,
+    failListening: (error: Error) => void,
+  ): Promise<void> {
+    try {
+      const hit = await this.listenForCallback(state, signal, markListening, failListening)
+      try {
+        const credential = await completeOAuthLogin(hit.code, this.fetchImpl, Date.now(), signal)
+        await this.store.write(credential)
+        this.account = await this.readStored()
+        hit.reply(true)
+      } catch (error: unknown) {
+        hit.reply(false)
+        throw error
+      }
+    } catch (error: unknown) {
+      if (this.account.status === 'signed-in' || signal.aborted) return
+      this.account = { status: 'error', message: safeMessage(error) }
+      console.error('[dsh-antigravity-oauth] login failed:', safeMessage(error))
+    } finally {
+      this.cancellation = undefined
+      this.listening = undefined
+      this.pendingUrl = undefined
+      this.pendingState = undefined
+      await this.stopCallbackServer()
+    }
+  }
+
+  private listenForCallback(
+    state: string,
+    signal: AbortSignal,
+    onListening: () => void,
+    onListenError: (error: Error) => void,
+  ): Promise<{ code: string, reply: (ok: boolean) => void }> {
     return new Promise((resolve, reject) => {
+      let settled = false
+      const fail = (error: unknown): void => {
+        const err = error instanceof Error ? error : new Error(String(error))
+        if (!settled) {
+          settled = true
+          reject(err)
+        }
+      }
       const server = createServer((req: IncomingMessage, res: ServerResponse) => {
         try {
           const requestUrl = new URL(req.url ?? '/', CALLBACK_URI)
@@ -178,34 +228,67 @@ export class AntigravitySession {
             res.end('not found')
             return
           }
+          const oauthError = requestUrl.searchParams.get('error')
+          if (oauthError !== null && oauthError.length > 0) {
+            if (!res.writableEnded) {
+              res.writeHead(400, { 'content-type': 'text/html; charset=utf-8' })
+              res.end(html(false))
+            }
+            const description = requestUrl.searchParams.get('error_description')
+            fail(new Error(
+              description !== null && description.length > 0 ? `${oauthError}: ${description}` : oauthError,
+            ))
+            return
+          }
           const code = requestUrl.searchParams.get('code')
           const returnedState = requestUrl.searchParams.get('state')
           if (code === null || code.length === 0 || returnedState !== state) {
-            res.writeHead(400, { 'content-type': 'text/html; charset=utf-8' })
-            res.end(html(false))
-            reject(new Error('OAuth callback is missing code or state'))
+            if (!res.writableEnded) {
+              res.writeHead(404, { 'content-type': 'text/plain' })
+              res.end('not found')
+            }
             return
           }
-          res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
-          res.end(html(true))
-          resolve(code)
+          if (settled) {
+            if (!res.writableEnded) {
+              res.writeHead(409, { 'content-type': 'text/plain' })
+              res.end('already handled')
+            }
+            return
+          }
+          settled = true
+          resolve({
+            code,
+            reply: (ok: boolean) => {
+              if (res.writableEnded) return
+              res.writeHead(ok ? 200 : 400, { 'content-type': 'text/html; charset=utf-8' })
+              res.end(html(ok))
+            },
+          })
         } catch (error: unknown) {
-          reject(error)
+          fail(error)
         }
       })
       this.callbackServer = server
       const onAbort = (): void => {
-        this.stopCallbackServer()
-        reject(signal.reason instanceof Error ? signal.reason : new Error('login cancelled'))
+        void this.stopCallbackServer()
+        fail(signal.reason instanceof Error ? signal.reason : new Error('login cancelled'))
       }
       signal.addEventListener('abort', onAbort, { once: true })
-      server.once('error', reject)
-      server.listen(CALLBACK_PORT, '127.0.0.1')
+      server.once('error', (error: Error) => {
+        onListenError(error)
+        fail(error)
+      })
+      server.listen(CALLBACK_PORT, '127.0.0.1', onListening)
     })
   }
 
-  private stopCallbackServer(): void {
-    this.callbackServer?.close()
+  private async stopCallbackServer(): Promise<void> {
+    const server = this.callbackServer
     this.callbackServer = undefined
+    if (server === undefined) return
+    await new Promise<void>(resolve => {
+      server.close(() => resolve())
+    })
   }
 }

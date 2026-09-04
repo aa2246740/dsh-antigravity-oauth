@@ -57,7 +57,7 @@ export function authorizationUrl(state: string, redirectUri = CALLBACK_URI): str
     scope: SCOPES.join(' '),
     state,
     access_type: 'offline',
-    prompt: 'consent',
+    prompt: 'select_account consent',
   })
   return `${AUTH_URL}?${params.toString()}`
 }

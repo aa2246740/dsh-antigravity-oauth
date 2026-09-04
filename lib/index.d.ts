@@ -189,6 +189,7 @@ declare class AntigravitySession {
   private lastRefreshAttempt;
   private operation;
   private cancellation;
+  private listening;
   private pendingUrl;
   private pendingState;
   private callbackServer;
@@ -207,6 +208,7 @@ declare class AntigravitySession {
   signOut(): Promise<void>;
   dispose(): Promise<void>;
   private startLogin;
+  private runLogin;
   private listenForCallback;
   private stopCallbackServer;
 }
