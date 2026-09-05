@@ -12,7 +12,7 @@ import {
   TOKEN_URL,
   USERINFO_URL,
 } from './ids.ts'
-import type { AntigravityOAuth } from './types.ts'
+import type { AntigravityOAuth, AntigravityGrant, EligibilitySummary } from './types.ts'
 import { isRecord } from './types.ts'
 import { antigravityUserAgent } from './user-agent.ts'
 
@@ -143,10 +143,10 @@ export async function exchangeAuthorizationCode(
 }
 
 export async function refreshAccessToken(
-  current: AntigravityOAuth,
+  current: AntigravityGrant,
   fetcher: typeof fetch = fetch,
   now = Date.now(),
-): Promise<AntigravityOAuth> {
+): Promise<AntigravityGrant> {
   const response = await fetcher(TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -196,13 +196,15 @@ function parseLoadCodeAssist(payload: unknown): {
   projectId?: string
   hasCurrentTier: boolean
   freeTierAllowed: boolean
+  defaultTier?: string
   ineligibility?: { reasonMessage: string, validationUrl?: string }
 } {
   if (!isRecord(payload)) throw new Error('loadCodeAssist response must be an object')
-  const projectId = typeof payload.cloudaicompanionProject === 'string' && payload.cloudaicompanionProject.length > 0
-    ? payload.cloudaicompanionProject
+  const project = isRecord(payload.cloudaicompanionProject) ? payload.cloudaicompanionProject.id : payload.cloudaicompanionProject
+  const projectId = typeof project === 'string' && project.length > 0
+    ? project
     : undefined
-  const hasCurrentTier = payload.currentTier !== undefined && payload.currentTier !== null
+  const hasCurrentTier = isRecord(payload.currentTier) || isRecord(payload.paidTier)
   const allowed = Array.isArray(payload.allowedTiers)
     ? payload.allowedTiers.some(tier => isRecord(tier) && tier.id === FREE_TIER_ID)
     : false
@@ -217,7 +219,10 @@ function parseLoadCodeAssist(payload: unknown): {
         : {},
     }
     : undefined
-  return { projectId, hasCurrentTier, freeTierAllowed: allowed, ineligibility }
+  const tiers = Array.isArray(payload.allowedTiers) ? payload.allowedTiers.filter(isRecord) : []
+  const preferred = tiers.find(tier => tier.isDefault === true) ?? tiers.find(tier => tier.id === FREE_TIER_ID)
+  const defaultTier = typeof preferred?.id === 'string' && preferred.id.length > 0 ? preferred.id : undefined
+  return { projectId, hasCurrentTier, freeTierAllowed: allowed, defaultTier, ineligibility }
 }
 
 async function postLoadCodeAssist(
@@ -236,6 +241,7 @@ async function postLoadCodeAssist(
 
 async function onboardUser(
   accessToken: string,
+  tierId: string,
   fetcher: typeof fetch,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -250,7 +256,7 @@ async function onboardUser(
     method: 'POST',
     headers,
     body: JSON.stringify({
-      tierId: FREE_TIER_ID,
+      tierId,
       metadata: LOAD_CODE_ASSIST_BODY.metadata,
     }),
     signal: signal === undefined ? AbortSignal.timeout(remaining()) : AbortSignal.any([signal, AbortSignal.timeout(remaining())]),
@@ -285,15 +291,22 @@ export async function discoverProject(
   accessToken: string,
   fetcher: typeof fetch = fetch,
   signal?: AbortSignal,
+  observe?: (summary: EligibilitySummary) => void,
 ): Promise<string> {
   const initial = await postLoadCodeAssist(accessToken, fetcher, signal)
-  if (!initial.freeTierAllowed && initial.ineligibility !== undefined) {
+  observe?.({ hasProject: initial.projectId !== undefined, hasCurrentTier: initial.hasCurrentTier,
+    freeTierAllowed: initial.freeTierAllowed, defaultTier: initial.defaultTier, rejected: initial.ineligibility !== undefined })
+  if (initial.hasCurrentTier && initial.projectId !== undefined) return initial.projectId
+  if (!initial.hasCurrentTier && initial.defaultTier === undefined && initial.ineligibility !== undefined) {
     const extra = initial.ineligibility.validationUrl === undefined
       ? ''
       : `\n${initial.ineligibility.validationUrl}`
     throw new Error(`${initial.ineligibility.reasonMessage}${extra}`)
   }
-  if (!initial.hasCurrentTier) await onboardUser(accessToken, fetcher, signal)
+  if (!initial.hasCurrentTier) {
+    if (initial.defaultTier === undefined) throw new Error('Antigravity did not advertise an eligible default tier')
+    await onboardUser(accessToken, initial.defaultTier, fetcher, signal)
+  }
   const refreshed = await postLoadCodeAssist(accessToken, fetcher, signal)
   if (refreshed.projectId !== undefined) return refreshed.projectId
   throw new Error('loadCodeAssist did not return a cloudaicompanionProject')
@@ -304,10 +317,17 @@ export async function completeOAuthLogin(
   fetcher: typeof fetch = fetch,
   now = Date.now(),
   signal?: AbortSignal,
+  onAuthorized?: (grant: AntigravityGrant) => Promise<void>,
+  observe?: (summary: EligibilitySummary) => void,
 ): Promise<AntigravityOAuth> {
   const tokens = await exchangeAuthorizationCode(code, CALLBACK_URI, fetcher, now)
+  signal?.throwIfAborted()
+  await onAuthorized?.(tokens)
   const email = await fetchUserEmail(tokens.access, fetcher)
-  const projectId = await discoverProject(tokens.access, fetcher, signal)
+  signal?.throwIfAborted()
+  await onAuthorized?.({ ...tokens, ...email === undefined ? {} : { email } })
+  const projectId = await discoverProject(tokens.access, fetcher, signal, observe)
+  signal?.throwIfAborted()
   return {
     ...tokens,
     projectId,

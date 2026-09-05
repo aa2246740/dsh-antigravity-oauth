@@ -4,6 +4,7 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 import { AUTH_COMPLETE_PATH, AUTH_LOGIN_PATH, AUTH_LOGOUT_PATH, AUTH_STATUS_PATH } from './ids.ts'
 import { isSafeAuthUrl, safeMessage } from './redact.ts'
 import type { AntigravitySession } from './session.ts'
+import { NETWORK_PATH } from './network.ts'
 
 function trustedRequest(req: IncomingMessage): boolean {
   const remote = req.socket.remoteAddress
@@ -63,6 +64,34 @@ export function registerAntigravityAuthRoutes(
   }
   ctx.effect(() => {
     const routes = [
+      ctx.webServer.register({
+        kind: 'exact', path: NETWORK_PATH,
+        handler: async (req, res) => {
+          if (!trustedRequest(req)) return json(res, 403, { error: 'forbidden' })
+          const hostname = new URL(`http://${req.headers.host}`).hostname
+          if (!['127.0.0.1', 'localhost', '[::1]'].includes(hostname)) return json(res, 403, { error: 'forbidden' })
+          try {
+            if (req.method === 'GET') return json(res, 200, await session.network.snapshot())
+            if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' })
+            if (req.headers['content-type']?.split(';')[0] !== 'application/json') return json(res, 415, { error: 'application/json required' })
+            await session.network.save(await readJson(req))
+            json(res, 200, await session.network.snapshot())
+          } catch (error) { json(res, 400, { error: safeMessage(error) }) }
+        },
+      }),
+      ...(['cancel', 'retry'] as const).map(action => ctx.webServer.register({
+        kind: 'exact', path: `/plugins/dsh-antigravity-oauth/auth/${action}`,
+        handler: async (req, res) => {
+          if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' })
+          if (!trustedRequest(req)) return json(res, 403, { error: 'forbidden' })
+          try {
+            if (action === 'cancel') await session.cancel()
+            else await session.retryEligibility()
+            await notify()
+            json(res, 200, { ok: true, account: await session.snapshot() })
+          } catch (error) { json(res, 500, { error: safeMessage(error) }) }
+        },
+      })),
       ctx.webServer.register({
         kind: 'exact',
         path: AUTH_STATUS_PATH,

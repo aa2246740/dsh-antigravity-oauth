@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AntigravityKey } from './locales.ts'
+import type { AntigravityAccountState as AccountState } from '../types.ts'
 
 const STATUS_PATH = '/plugins/dsh-antigravity-oauth/auth/status'
 const LOGIN_PATH = '/plugins/dsh-antigravity-oauth/auth/login'
@@ -8,11 +9,8 @@ const LOGOUT_PATH = '/plugins/dsh-antigravity-oauth/auth/logout'
 const POLL_INTERVAL_MS = 1_000
 const STYLE_ID = 'dsh-antigravity-oauth-settings-theme'
 
-type AccountState =
-  | { status: 'signed-out' }
-  | { status: 'signing-in', url?: string }
-  | { status: 'signed-in', email?: string, expiresAt?: string, projectId: string }
-  | { status: 'error', message: string }
+const NETWORK_PATH = '/plugins/dsh-antigravity-oauth/network'
+type Network = { mode: 'auto' | 'direct' | 'proxy', url: string, effective: string }
 
 export interface AntigravitySettingsInjected {
   t: (key: AntigravityKey, params?: Record<string, unknown>) => string
@@ -95,6 +93,8 @@ export function AntigravitySettings({ t }: AntigravitySettingsProps) {
   const [error, setError] = useState<string | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [draft, setDraft] = useState('')
+  const [network, setNetwork] = useState<Network>()
+  const [networkMessage, setNetworkMessage] = useState('')
 
   useEffect(() => { ensureThemeStyles() }, [])
 
@@ -108,6 +108,9 @@ export function AntigravitySettings({ t }: AntigravitySettingsProps) {
   }, [t])
 
   useEffect(() => { void refresh() }, [refresh])
+  useEffect(() => {
+    void jsonRequest<Network>(NETWORK_PATH).then(setNetwork).catch(error => setError(String(error)))
+  }, [])
   const signing = account?.status === 'signing-in'
   useEffect(() => {
     if (!signing) return
@@ -122,6 +125,7 @@ export function AntigravitySettings({ t }: AntigravitySettingsProps) {
     try {
       const challenge = await jsonRequest<{ url: string }>(LOGIN_PATH, 'POST', {})
       if (popup !== null && challenge.url !== undefined) popup.location.replace(challenge.url)
+      if (popup === null && challenge.url !== undefined) window.open(challenge.url, '_blank', 'noopener,noreferrer')
       if (popup !== null && challenge.url === undefined) popup.close()
       await refresh()
     } catch (caught: unknown) {
@@ -159,10 +163,30 @@ export function AntigravitySettings({ t }: AntigravitySettingsProps) {
     }
   }
 
+  const recover = async (action: 'cancel' | 'retry'): Promise<void> => {
+    setBusy(true)
+    try {
+      await jsonRequest(`/plugins/dsh-antigravity-oauth/auth/${action}`, 'POST', {})
+      setDraft('')
+      await refresh()
+    } catch (error) { setError(String(error)) } finally { setBusy(false) }
+  }
+
+  const saveNetwork = async (): Promise<void> => {
+    if (!network) return
+    setBusy(true)
+    try {
+      setNetwork(await jsonRequest<Network>(NETWORK_PATH, 'POST', { mode: network.mode, url: network.url }))
+      setNetworkMessage(t('networkSaved'))
+    } catch (error) { setError(String(error)) } finally { setBusy(false) }
+  }
+
   const label = account === undefined
     ? t('loadingAccount')
     : account.status === 'signed-in'
       ? t('signedIn')
+      : account.status === 'authorized'
+        ? t('authorized')
       : account.status === 'signing-in'
         ? t('signingIn')
         : account.status === 'error'
@@ -181,16 +205,34 @@ export function AntigravitySettings({ t }: AntigravitySettingsProps) {
       <h2 id="antigravity-settings-title" className="dsh-agy-title">{t('title')}</h2>
       <p className="dsh-agy-body">{t('tos')}</p>
       {error !== undefined ? <p className="dsh-agy-error">{error}</p> : null}
+      {network && <div className="dsh-agy-card">
+        <p className="dsh-agy-name">{t('network')}</p>
+        <p className="dsh-agy-body">{t('networkHelp')}</p>
+        <label>{t('network')} <select aria-label={t('network')} value={network.mode} disabled={busy}
+          onChange={e => setNetwork({ ...network, mode: e.target.value as Network['mode'] })}>
+          <option value="auto">{t('networkAuto')}</option>
+          <option value="direct">{t('networkDirect')}</option>
+          <option value="proxy">{t('networkProxy')}</option>
+        </select></label>
+        {network.mode === 'proxy' && <input className="dsh-agy-input" aria-label={t('proxyUrl')}
+          placeholder="http://127.0.0.1:45678" value={network.url} disabled={busy}
+          onChange={e => setNetwork({ ...network, url: e.target.value })} />}
+        <p className="dsh-agy-body">{t('effectiveNetwork')} {network.effective}</p>
+        <button className="dsh-agy-btn dsh-agy-btn-secondary" disabled={busy} onClick={() => { void saveNetwork() }}>{t('saveNetwork')}</button>
+        {networkMessage && <p role="status">{networkMessage}</p>}
+      </div>}
       <article className="dsh-agy-card">
         <div className="dsh-agy-row">
           <p className="dsh-agy-name">{t('title')}</p>
-          {account?.status === 'signed-in'
+          {account?.status === 'signed-in' || account?.status === 'authorized'
             ? (
                 <button type="button" className="dsh-agy-btn dsh-agy-btn-secondary" disabled={busy} onClick={() => { void signOut() }}>
                   {busy ? t('working') : t('logout')}
                 </button>
               )
-            : (
+            : account?.status === 'signing-in' ? (
+                <button type="button" className="dsh-agy-btn dsh-agy-btn-secondary" onClick={() => { void recover('cancel') }}>{t('cancel')}</button>
+              ) : (
                 <button type="button" className="dsh-agy-btn dsh-agy-btn-primary" disabled={busy} onClick={() => { void signIn() }}>
                   {busy ? t('working') : account?.status === 'error' ? t('loginAgain') : t('login')}
                 </button>
@@ -201,6 +243,14 @@ export function AntigravitySettings({ t }: AntigravitySettingsProps) {
           <span>{label}</span>
         </div>
         {account?.status === 'error' ? <p className="dsh-agy-error">{account.message}</p> : null}
+        {account?.status === 'authorized' && <>
+          <p className="dsh-agy-body">{t('authorizedHelp')}</p>
+          <p className="dsh-agy-error">{account.message}</p>
+          <button type="button" className="dsh-agy-btn dsh-agy-btn-primary" disabled={busy}
+            onClick={() => { void recover('retry') }}>{busy ? t('working') : t('retryEligibility')}</button>
+          {busy && <button type="button" className="dsh-agy-btn dsh-agy-btn-secondary"
+            onClick={() => { void recover('cancel') }}>{t('cancel')}</button>}
+        </>}
         {account?.status === 'signed-in' && account.email !== undefined
           ? <p className="dsh-agy-body">{t('email')} {account.email}</p>
           : null}
@@ -212,7 +262,7 @@ export function AntigravitySettings({ t }: AntigravitySettingsProps) {
               <p className="dsh-agy-body">
                 {t('openUrl')}
                 {' '}
-                <a href={account.url} target="_blank" rel="noreferrer" className="dsh-agy-link">{account.url}</a>
+                <a href={account.url} target="_blank" rel="noreferrer" className="dsh-agy-link">{t('reopen')}</a>
               </p>
             )
           : null}

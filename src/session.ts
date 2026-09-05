@@ -6,21 +6,24 @@ import { createCcaSession } from './envelope.ts'
 import {
   authorizationUrl,
   completeOAuthLogin,
+  discoverProject,
   extractOAuthCode,
   newOAuthState,
   refreshAccessToken,
 } from './oauth.ts'
 import { isSafeAuthUrl, safeMessage } from './redact.ts'
 import type { AntigravityCredentialStore } from './store.ts'
-import type { AntigravityAccountState, AntigravityOAuth, CcaSession } from './types.ts'
-import { envProxyFetch } from './proxy-fetch.ts'
+import type { AntigravityAccountState, AntigravityOAuth, AntigravityGrant, CcaSession, EligibilitySummary } from './types.ts'
+import { AntigravityNetwork } from './network.ts'
 import { ensureAntigravityVersion } from './user-agent.ts'
 
 export type FetchImpl = typeof fetch
 
-function html(ok: boolean): string {
-  const title = ok ? 'Signed in' : 'Sign-in failed'
-  const body = ok ? 'You can close this window and return to DeepSeek Harness.' : 'Authorization failed. Return to DeepSeek Harness and try again.'
+function html(ok: boolean, authorized = false): string {
+  const title = ok ? 'Signed in' : authorized ? 'Google authorized' : 'Sign-in failed'
+  const body = ok ? 'You can close this window and return to DeepSeek Harness.' : authorized
+    ? 'Google authorization is saved. Return to DeepSeek Harness to check Antigravity service eligibility.'
+    : 'Authorization failed. Return to DeepSeek Harness and try again.'
   return `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head><body><p>${body}</p></body></html>`
 }
 
@@ -38,12 +41,17 @@ export class AntigravitySession {
   private pendingState: string | undefined
   private callbackServer: ReturnType<typeof createServer> | undefined
   private account: AntigravityAccountState = { status: 'signed-out' }
+  readonly network: AntigravityNetwork
+  private serviceError: string | undefined
+  private completing = false
+  private eligibility: EligibilitySummary | undefined
 
-  constructor(store: AntigravityCredentialStore, fetchImpl: FetchImpl = envProxyFetch) {
+  constructor(store: AntigravityCredentialStore, fetchImpl?: FetchImpl) {
     this.store = store
-    this.fetchImpl = fetchImpl
+    this.network = new AntigravityNetwork(store.filename + '.network.json')
+    this.fetchImpl = fetchImpl ?? this.network.fetch
     this.ccaSession = createCcaSession()
-    this.cca = new CcaClient({ session: this.ccaSession, fetch: fetchImpl })
+    this.cca = new CcaClient({ session: this.ccaSession, fetch: this.fetchImpl })
   }
 
   async snapshot(): Promise<AntigravityAccountState> {
@@ -55,6 +63,11 @@ export class AntigravitySession {
   async readStored(): Promise<AntigravityAccountState> {
     const credential = await this.store.read()
     if (credential === undefined) return { status: 'signed-out' }
+    if (!credential.projectId) return {
+      status: 'authorized', email: credential.email,
+      message: this.serviceError ?? 'Google authorization saved. Check Antigravity service eligibility to continue.',
+      eligibility: this.eligibility,
+    }
     return {
       status: 'signed-in',
       projectId: credential.projectId,
@@ -64,7 +77,8 @@ export class AntigravitySession {
   }
 
   async credential(): Promise<AntigravityOAuth | undefined> {
-    return this.store.read()
+    const grant = await this.store.read()
+    return grant?.projectId ? { ...grant, projectId: grant.projectId } : undefined
   }
 
   async requireCredential(): Promise<AntigravityOAuth> {
@@ -72,10 +86,16 @@ export class AntigravitySession {
     if (credential === undefined) {
       throw new Error('Antigravity is not connected. Open Settings and sign in.')
     }
-    return credential
+    if (!credential.projectId) throw new Error('Google is authorized, but Antigravity service eligibility has not passed. Open Settings and retry.')
+    return { ...credential, projectId: credential.projectId }
   }
 
   async refreshIfNeeded(now = Date.now()): Promise<AntigravityOAuth | undefined> {
+    const grant = await this.refreshGrant(now)
+    return grant?.projectId ? { ...grant, projectId: grant.projectId } : undefined
+  }
+
+  private async refreshGrant(now = Date.now()): Promise<AntigravityGrant | undefined> {
     const current = await this.store.read()
     if (current === undefined) return undefined
     if (now < current.expires - OAUTH_REFRESH_SOON_MS) return current
@@ -111,21 +131,75 @@ export class AntigravitySession {
   }
 
   async complete(raw: string): Promise<AntigravityAccountState> {
+    if (!this.pendingState || this.completing) throw new Error('Start a new login before submitting a callback')
     const extracted = extractOAuthCode(raw)
     if (this.pendingState !== undefined && extracted.state !== undefined && extracted.state !== this.pendingState) {
       throw new Error('OAuth state mismatch')
     }
-    const credential = await completeOAuthLogin(extracted.code, this.fetchImpl)
-    await this.store.write(credential)
-    this.account = await this.readStored()
+    const signal = this.cancellation!.signal
+    this.completing = true
+    try {
+      await this.finishCode(extracted.code, signal)
+    } finally {
+      this.cancellation?.abort(new Error('Antigravity login completed'))
+      await this.waitUntilSettled()
+      this.completing = false
+    }
+    return this.account
+  }
+
+  private async finishCode(code: string, signal: AbortSignal): Promise<void> {
+    this.serviceError = undefined
+    try {
+      const loginFetch: FetchImpl = (input, init) => this.fetchImpl(input, {
+        ...init, signal: init?.signal ? AbortSignal.any([init.signal, signal]) : signal,
+      })
+      const credential = await completeOAuthLogin(code, loginFetch, Date.now(), signal,
+        async grant => { signal.throwIfAborted(); await this.store.write(grant) },
+        summary => { this.eligibility = summary })
+      signal.throwIfAborted()
+      await this.store.write(credential)
+      this.account = await this.readStored()
+    } catch (error) {
+      if (signal.aborted) return
+      this.serviceError = safeMessage(error)
+      const stored = await this.readStored()
+      this.account = stored.status === 'authorized' ? stored : { status: 'error', message: this.serviceError }
+    }
+  }
+
+  async retryEligibility(): Promise<AntigravityAccountState> {
+    if (this.operation) throw new Error('Cancel the active login before retrying eligibility')
+    const cancellation = new AbortController()
+    this.cancellation = cancellation
+    this.operation = (async () => {
+      try {
+        const grant = await this.refreshGrant()
+        if (!grant) throw new Error('Sign in to Google first')
+        const projectId = await discoverProject(grant.access, this.fetchImpl, cancellation.signal,
+          summary => { this.eligibility = summary })
+        cancellation.signal.throwIfAborted()
+        await this.store.write({ ...grant, projectId })
+        this.serviceError = undefined
+        this.account = await this.readStored()
+      } catch (error) {
+        if (!cancellation.signal.aborted) {
+          this.serviceError = safeMessage(error)
+          this.account = await this.readStored()
+        }
+      }
+    })()
+    try { await this.operation } finally { this.operation = undefined; this.cancellation = undefined }
+    return this.account
+  }
+
+  async cancel(): Promise<void> {
+    this.cancellation?.abort(new Error('Antigravity login cancelled'))
+    await this.operation?.catch(() => undefined)
+    await this.stopCallbackServer()
     this.pendingUrl = undefined
     this.pendingState = undefined
-    this.cancellation?.abort(new Error('Antigravity login completed'))
-    this.stopCallbackServer()
-    await this.waitUntilSettled()
-    this.operation = undefined
-    this.cancellation = undefined
-    return this.account
+    this.account = await this.readStored()
   }
 
   async signOut(): Promise<void> {
@@ -148,6 +222,7 @@ export class AntigravitySession {
     this.operation = undefined
     this.cancellation = undefined
     this.listening = undefined
+    await this.network.dispose()
   }
 
   private startLogin(): void {
@@ -184,10 +259,9 @@ export class AntigravitySession {
     try {
       const hit = await this.listenForCallback(state, signal, markListening, failListening)
       try {
-        const credential = await completeOAuthLogin(hit.code, this.fetchImpl, Date.now(), signal)
-        await this.store.write(credential)
-        this.account = await this.readStored()
-        hit.reply(true)
+        this.completing = true
+        await this.finishCode(hit.code, signal)
+        hit.reply(this.account.status === 'signed-in')
       } catch (error: unknown) {
         hit.reply(false)
         throw error
@@ -198,6 +272,7 @@ export class AntigravitySession {
       console.error('[dsh-antigravity-oauth] login failed:', safeMessage(error))
     } finally {
       this.cancellation = undefined
+      this.completing = false
       this.listening = undefined
       this.pendingUrl = undefined
       this.pendingState = undefined
@@ -249,7 +324,7 @@ export class AntigravitySession {
             }
             return
           }
-          if (settled) {
+          if (settled || this.completing) {
             if (!res.writableEnded) {
               res.writeHead(409, { 'content-type': 'text/plain' })
               res.end('already handled')
@@ -262,7 +337,7 @@ export class AntigravitySession {
             reply: (ok: boolean) => {
               if (res.writableEnded) return
               res.writeHead(ok ? 200 : 400, { 'content-type': 'text/html; charset=utf-8' })
-              res.end(html(ok))
+              res.end(html(ok, this.account.status === 'authorized'))
             },
           })
         } catch (error: unknown) {

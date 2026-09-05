@@ -1,4 +1,11 @@
 import { defineConfig } from 'tsdown'
+import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
+
+const harness = process.env.DSHX_HARNESS
+if (!harness) throw new Error('Set DSHX_HARNESS to the checkout used for this build.')
+const { externalClientBundle } = await import(pathToFileURL(resolve(harness, 'tools/dshx/src/client-build.js')).href)
+const client = externalClientBundle('dsh-antigravity-oauth', [], { clientEntry: 'src/client/index.tsx' })[1]
 
 const nodeExternal = [
   /^@deepseek-ai\//,
@@ -20,15 +27,5 @@ export default defineConfig([
     fixedExtension: false,
     deps: { neverBundle: nodeExternal },
   },
-  {
-    entry: {
-      client: 'src/client/index.tsx',
-    },
-    platform: 'browser',
-    format: 'cjs',
-    dts: false,
-    outDir: 'lib',
-    fixedExtension: false,
-    deps: { neverBundle: ['react', 'react/jsx-runtime'] },
-  },
+  client,
 ])

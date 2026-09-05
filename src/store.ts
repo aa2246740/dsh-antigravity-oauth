@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { AUTH_FILENAME } from './ids.ts'
-import type { AntigravityOAuth } from './types.ts'
+import type { AntigravityGrant } from './types.ts'
 import { isRecord } from './types.ts'
 
 const AUTH_FORMAT_VERSION = 1
@@ -11,7 +11,7 @@ const OAUTH_FIELDS = new Set(['type', 'access', 'refresh', 'expires', 'projectId
 
 interface AuthDocument {
   version: typeof AUTH_FORMAT_VERSION
-  credential: AntigravityOAuth
+  credential: AntigravityGrant
 }
 
 function isENOENT(error: unknown): boolean {
@@ -35,7 +35,7 @@ async function assertOwnerOnly(filename: string): Promise<void> {
   }
 }
 
-export function parseAntigravityOAuth(raw: unknown, filename: string): AntigravityOAuth {
+export function parseAntigravityOAuth(raw: unknown, filename: string): AntigravityGrant {
   if (!isRecord(raw)) throw new Error(`dsh-antigravity-oauth: ${filename} credential must be an object`)
   if (raw.type !== 'oauth') throw new Error(`dsh-antigravity-oauth: ${filename} credential type must be oauth`)
   if (Object.keys(raw).some(key => !OAUTH_FIELDS.has(key))) {
@@ -50,7 +50,7 @@ export function parseAntigravityOAuth(raw: unknown, filename: string): Antigravi
   if (typeof raw.expires !== 'number' || !Number.isFinite(raw.expires) || raw.expires <= 0) {
     throw new Error(`dsh-antigravity-oauth: ${filename} expires must be a positive finite number`)
   }
-  if (typeof raw.projectId !== 'string' || raw.projectId.length === 0) {
+  if (raw.projectId !== undefined && (typeof raw.projectId !== 'string' || raw.projectId.length === 0)) {
     throw new Error(`dsh-antigravity-oauth: ${filename} projectId must be a non-empty string`)
   }
   if (raw.email !== undefined && typeof raw.email !== 'string') {
@@ -61,7 +61,7 @@ export function parseAntigravityOAuth(raw: unknown, filename: string): Antigravi
     access: raw.access,
     refresh: raw.refresh,
     expires: raw.expires,
-    projectId: raw.projectId,
+    ...typeof raw.projectId === 'string' ? { projectId: raw.projectId } : {},
     ...typeof raw.email === 'string' ? { email: raw.email } : {},
   }
 }
@@ -105,12 +105,12 @@ export class AntigravityCredentialStore {
     }
   }
 
-  async read(): Promise<AntigravityOAuth | undefined> {
+  async read(): Promise<AntigravityGrant | undefined> {
     const document = await this.readDocument()
     return document === undefined ? undefined : structuredClone(document.credential)
   }
 
-  async write(credential: AntigravityOAuth): Promise<AntigravityOAuth> {
+  async write(credential: AntigravityGrant): Promise<AntigravityGrant> {
     const next = parseAntigravityOAuth(credential, this.filename)
     await mkdir(dirname(this.filename), { recursive: true, mode: 0o700 })
     return withFileLock(this.filename, async () => {
@@ -124,8 +124,8 @@ export class AntigravityCredentialStore {
   }
 
   async modify(
-    fn: (current: AntigravityOAuth | undefined) => Promise<AntigravityOAuth | undefined>,
-  ): Promise<AntigravityOAuth | undefined> {
+    fn: (current: AntigravityGrant | undefined) => Promise<AntigravityGrant | undefined>,
+  ): Promise<AntigravityGrant | undefined> {
     await mkdir(dirname(this.filename), { recursive: true, mode: 0o700 })
     return withFileLock(this.filename, async () => {
       const current = (await this.readDocument())?.credential

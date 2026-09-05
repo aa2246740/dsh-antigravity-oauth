@@ -1,12 +1,20 @@
 export type CcaKind = 'chat' | 'search'
 
-export type AntigravityOAuth = {
+export type AntigravityGrant = {
   type: 'oauth'
   access: string
   refresh: string
   expires: number
-  projectId: string
+  projectId?: string
   email?: string
+}
+export type AntigravityOAuth = AntigravityGrant & { projectId: string }
+export type EligibilitySummary = {
+  hasProject: boolean
+  hasCurrentTier: boolean
+  freeTierAllowed: boolean
+  defaultTier?: string
+  rejected: boolean
 }
 
 export type CcaSession = {
@@ -88,6 +96,7 @@ export type CcaEvent =
 export type AntigravityAccountState =
   | { status: 'signed-out' }
   | { status: 'signing-in', url?: string }
+  | { status: 'authorized', email?: string, message: string, eligibility?: EligibilitySummary }
   | { status: 'signed-in', email?: string, expiresAt?: string, projectId: string }
   | { status: 'error', message: string }
 

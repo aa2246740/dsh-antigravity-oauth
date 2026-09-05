@@ -52,13 +52,13 @@
 
 ## 安装
 
-需要 Node **22.19+**，以及能跑起来的 DeepSeek Harness。本仓库按 **0.1.1-rc.2** 构建和验证（就是 DSH.app 拉起的那份 Host）。桌面壳自己的版本号可能不同，例如 0.1.3。
+需要 Node **22.19+**。当前兼容分支面向 DeepSeek Harness **0.1.2-rc.1**；桌面壳版本号与 Host 版本号不同。
 
 ```sh
 git clone https://github.com/aa2246740/dsh-antigravity-oauth.git
 cd dsh-antigravity-oauth
 npm install
-npm run build
+DSHX_HARNESS=/absolute/path/to/deepseek-harness npm run build
 ```
 
 `file:` 前缀必须留着。本插件把 DSH 运行时当 peer dependency，写成 `./dsh-antigravity-oauth` 往往解析不到依赖。
@@ -78,6 +78,10 @@ dsh plugin --profile web add file:./dsh-antigravity-oauth
 3. 若窗口没有自动返回，把跳转 URL 或授权码贴进表单。
 
 OAuth 回调监听 `http://127.0.0.1:51121/oauth-callback`。这里的桌面 OAuth **不用** PKCE。
+
+Google 授权与 Antigravity 服务资格分开显示。Google 授权成功后，即使资格检查失败也会保留本插件的凭据；可调整插件网络后点“重试资格检查”，不必反复授权。登录等待中可以取消、重新打开授权页或重新登录。只有拿到可用项目后才启用模型路由。
+
+已有付费资格及项目优先于免费套餐的拒绝信息；开通时遵循服务端返回的默认套餐。真实地区／账号限制仍会明确报错，不会绕过限制，也不会读取 Cockpit 或官方应用凭据。降级到旧版前注意：旧版不认识尚未取得项目的授权记录，请不要通过删除凭据来处理。
 
 ---
 
@@ -116,6 +120,8 @@ Gemini 3.7 Flash High 在后续 `functionCall` 上要带 `thought_signature`。�
 ---
 
 ## 代理
+
+设置 → Antigravity 提供“跟随 Host 环境／直连／指定 HTTP(S) 代理”，显示实际采用的路由。只影响本插件的 OAuth 与 CCA 请求，保存在 `$DSH_HOME/.dsh-antigravity-oauth.json.network.json`，不会修改系统代理或其他插件。保存后后续请求即生效，无需重启 Host。不要在代理 URL 内放账号密码。
 
 CCA 请求会通过 undici `ProxyAgent` 走 `HTTPS_PROXY` / `HTTP_PROXY` / `https_proxy` / `http_proxy`。Node 22+ 常常忽略这些变量，除非进程还设了 `NODE_USE_ENV_PROXY=1`；本插件不依赖那个开关。
 

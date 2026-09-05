@@ -2,7 +2,6 @@ import { GenerateOptions, LlmAdapter, LlmModelInfo, LlmProviderInfo, LlmResolved
 import z from "@deepseek-ai/schemastery";
 import { Context } from "@deepseek-ai/cordis";
 import { AttachmentStore } from "@deepseek-ai/dsh-attachment";
-
 //#region src/plugin-config.d.ts
 interface Config {
   streamIdleTimeoutMs?: number;
@@ -14,13 +13,23 @@ declare const Config: z<Config>;
 //#endregion
 //#region src/types.d.ts
 type CcaKind = 'chat' | 'search';
-type AntigravityOAuth = {
+type AntigravityGrant = {
   type: 'oauth';
   access: string;
   refresh: string;
   expires: number;
-  projectId: string;
+  projectId?: string;
   email?: string;
+};
+type AntigravityOAuth = AntigravityGrant & {
+  projectId: string;
+};
+type EligibilitySummary = {
+  hasProject: boolean;
+  hasCurrentTier: boolean;
+  freeTierAllowed: boolean;
+  defaultTier?: string;
+  rejected: boolean;
 };
 type CcaSession = {
   agentId: string;
@@ -117,6 +126,11 @@ type AntigravityAccountState = {
   status: 'signing-in';
   url?: string;
 } | {
+  status: 'authorized';
+  email?: string;
+  message: string;
+  eligibility?: EligibilitySummary;
+} | {
   status: 'signed-in';
   email?: string;
   expiresAt?: string;
@@ -173,10 +187,30 @@ declare class AntigravityCredentialStore {
   readonly filename: string;
   constructor(filename?: string);
   private readDocument;
-  read(): Promise<AntigravityOAuth | undefined>;
-  write(credential: AntigravityOAuth): Promise<AntigravityOAuth>;
-  modify(fn: (current: AntigravityOAuth | undefined) => Promise<AntigravityOAuth | undefined>): Promise<AntigravityOAuth | undefined>;
+  read(): Promise<AntigravityGrant | undefined>;
+  write(credential: AntigravityGrant): Promise<AntigravityGrant>;
+  modify(fn: (current: AntigravityGrant | undefined) => Promise<AntigravityGrant | undefined>): Promise<AntigravityGrant | undefined>;
   clear(): Promise<void>;
+}
+//#endregion
+//#region src/network.d.ts
+type NetworkSettings = {
+  mode: 'auto' | 'direct' | 'proxy';
+  url: string;
+};
+declare class AntigravityNetwork {
+  readonly filename: string;
+  private agents;
+  constructor(filename: string);
+  read(): Promise<NetworkSettings>;
+  save(value: unknown): Promise<void>;
+  snapshot(): Promise<{
+    effective: string;
+    mode: "auto" | "direct" | "proxy";
+    url: string;
+  }>;
+  fetch: typeof fetch;
+  dispose(): Promise<void>;
 }
 //#endregion
 //#region src/session.d.ts
@@ -195,17 +229,25 @@ declare class AntigravitySession {
   private pendingState;
   private callbackServer;
   private account;
+  readonly network: AntigravityNetwork;
+  private serviceError;
+  private completing;
+  private eligibility;
   constructor(store: AntigravityCredentialStore, fetchImpl?: FetchImpl);
   snapshot(): Promise<AntigravityAccountState>;
   readStored(): Promise<AntigravityAccountState>;
   credential(): Promise<AntigravityOAuth | undefined>;
   requireCredential(): Promise<AntigravityOAuth>;
   refreshIfNeeded(now?: number): Promise<AntigravityOAuth | undefined>;
+  private refreshGrant;
   signIn(): Promise<{
     url: string;
   }>;
   waitUntilSettled(): Promise<void>;
   complete(raw: string): Promise<AntigravityAccountState>;
+  private finishCode;
+  retryEligibility(): Promise<AntigravityAccountState>;
+  cancel(): Promise<void>;
   signOut(): Promise<void>;
   dispose(): Promise<void>;
   private startLogin;

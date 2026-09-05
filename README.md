@@ -52,13 +52,13 @@ It is **not** `dsh-oauth-login`. Do not merge the two.
 
 ## Install
 
-Node **22.19+** and a running DeepSeek Harness. This tree was built and verified against **0.1.1-rc.2** (the Host DSH.app launches). The desktop app bundle itself may show a different number, such as 0.1.3.
+Node **22.19+**. This compatibility branch targets DeepSeek Harness **0.1.2-rc.1**; the desktop launcher has a separate version.
 
 ```sh
 git clone https://github.com/aa2246740/dsh-antigravity-oauth.git
 cd dsh-antigravity-oauth
 npm install
-npm run build
+DSHX_HARNESS=/absolute/path/to/deepseek-harness npm run build
 ```
 
 Keep the `file:` prefix. This package treats DSH runtime as peer dependencies; a plain `./dsh-antigravity-oauth` symlink often cannot resolve them.
@@ -78,6 +78,8 @@ Restart the Web Host (`dsh web` / DSH.app). Open **Settings → Antigravity**. I
 3. If the window does not return, paste the redirect URL or authorization code into the form.
 
 OAuth listens on `http://127.0.0.1:51121/oauth-callback`. Desktop OAuth here does **not** use PKCE.
+
+Google authorization and Antigravity eligibility are separate states. An authorized grant is preserved if eligibility fails; adjust plugin networking and retry eligibility without repeating consent. Pending login can be cancelled, reopened or restarted. Model routing requires a resolved project. Existing paid tier/project takes precedence over a free-tier rejection; onboarding uses the server's default allowed tier. Actual account/location restrictions remain errors. No Cockpit or official-app credentials are read. Older plugin versions cannot parse a pending grant without a project; do not delete credentials as a downgrade workaround.
 
 ---
 
@@ -116,6 +118,8 @@ Do not expect pictures from `agy-google-antigravity`.
 ---
 
 ## Proxy
+
+Settings → Antigravity offers Host environment, direct, and explicit HTTP(S) proxy modes, with the effective route displayed. Settings persist in `$DSH_HOME/.dsh-antigravity-oauth.json.network.json` and apply to subsequent OAuth/CCA requests without restarting. They never change system networking or other plugins. Proxy credentials in URLs are rejected.
 
 CCA fetch honors `HTTPS_PROXY` / `HTTP_PROXY` / `https_proxy` / `http_proxy` through undici `ProxyAgent`. Node 22+ often ignores those variables unless the process also sets `NODE_USE_ENV_PROXY=1`; this plugin does not rely on that flag.
 
