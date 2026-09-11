@@ -11,6 +11,47 @@ interface Config {
 }
 declare const Config: z<Config>;
 //#endregion
+//#region src/envelope.d.ts
+declare function createCcaSession(endpoint?: string): CcaSession;
+type RequestEnvelope = {
+  requestId: string;
+  labels: Record<string, string>;
+  sessionId: string;
+  step: number;
+};
+declare function streamGenerateContentUrl(endpoint: string): string;
+type CcaRequestBody = {
+  project: string;
+  model: string;
+  request: Record<string, unknown>;
+  requestType: 'agent';
+  userAgent: 'antigravity';
+  requestId: string;
+};
+declare function buildCcaBody(projectId: string, input: CcaGenerateInput, envelope: RequestEnvelope): CcaRequestBody;
+//#endregion
+//#region src/cca-client.d.ts
+type CcaFetch = (input: string | URL, init?: RequestInit) => Promise<Response>;
+type CcaClientOptions = {
+  session: CcaSession;
+  fetch?: CcaFetch;
+  userAgent?: () => string;
+  now?: () => number;
+};
+declare class CcaClient {
+  readonly session: CcaSession;
+  private readonly fetchImpl;
+  private readonly userAgent;
+  private readonly now;
+  private lastExecutionId;
+  constructor(options: CcaClientOptions);
+  chat(oauth: AntigravityOAuth, input: ChatGenerateInput, signal?: AbortSignal): AsyncIterable<CcaEvent>;
+  search(oauth: AntigravityOAuth, input: SearchGenerateInput, signal?: AbortSignal): AsyncIterable<CcaEvent>;
+  private endpoints;
+  private headers;
+  private generate;
+}
+//#endregion
 //#region src/types.d.ts
 type CcaKind = 'chat' | 'search';
 type AntigravityGrant = {
@@ -23,13 +64,6 @@ type AntigravityGrant = {
 };
 type AntigravityOAuth = AntigravityGrant & {
   projectId: string;
-};
-type EligibilitySummary = {
-  hasProject: boolean;
-  hasCurrentTier: boolean;
-  freeTierAllowed: boolean;
-  defaultTier?: string;
-  rejected: boolean;
 };
 type CcaSession = {
   agentId: string;
@@ -120,77 +154,57 @@ type CcaEvent = {
   code?: number;
   message: string;
 };
-type AntigravityAccountState = {
+type AccountSummary = {
+  id: string;
+  email?: string;
+  projectId?: string;
+  expiresAt?: string;
+  ready: boolean;
+  limited: boolean;
+  dead: boolean;
+};
+type AntigravityStatus = {
   status: 'signed-out';
+  accounts: [];
 } | {
   status: 'signing-in';
   url?: string;
-} | {
-  status: 'authorized';
-  email?: string;
-  message: string;
-  eligibility?: EligibilitySummary;
-} | {
-  status: 'signed-in';
-  email?: string;
-  expiresAt?: string;
-  projectId: string;
+  accounts: AccountSummary[];
 } | {
   status: 'error';
   message: string;
+  accounts: AccountSummary[];
+} | {
+  status: 'signed-in';
+  activeId: string;
+  message?: string;
+  accounts: AccountSummary[];
 };
-//#endregion
-//#region src/envelope.d.ts
-declare function createCcaSession(endpoint?: string): CcaSession;
-type RequestEnvelope = {
-  requestId: string;
-  labels: Record<string, string>;
-  sessionId: string;
-  step: number;
+type AntigravityLease = {
+  oauth: AntigravityOAuth;
+  accountId: string;
+  email?: string;
+  cca: CcaClient;
 };
-declare function streamGenerateContentUrl(endpoint: string): string;
-type CcaRequestBody = {
-  project: string;
-  model: string;
-  request: Record<string, unknown>;
-  requestType: 'agent';
-  userAgent: 'antigravity';
-  requestId: string;
-};
-declare function buildCcaBody(projectId: string, input: CcaGenerateInput, envelope: RequestEnvelope): CcaRequestBody;
-//#endregion
-//#region src/cca-client.d.ts
-type CcaFetch = (input: string | URL, init?: RequestInit) => Promise<Response>;
-type CcaClientOptions = {
-  session: CcaSession;
-  fetch?: CcaFetch;
-  userAgent?: () => string;
-  now?: () => number;
-};
-declare class CcaClient {
-  readonly session: CcaSession;
-  private readonly fetchImpl;
-  private readonly userAgent;
-  private readonly now;
-  private lastExecutionId;
-  constructor(options: CcaClientOptions);
-  chat(oauth: AntigravityOAuth, input: ChatGenerateInput, signal?: AbortSignal): AsyncIterable<CcaEvent>;
-  search(oauth: AntigravityOAuth, input: SearchGenerateInput, signal?: AbortSignal): AsyncIterable<CcaEvent>;
-  private endpoints;
-  private headers;
-  private generate;
-}
 //#endregion
 //#region src/store.d.ts
+type StoredAccount = AntigravityGrant & {
+  id: string;
+  addedAt?: string;
+};
 declare function antigravityAuthPath(dshHome?: string): string;
 declare class AntigravityCredentialStore {
   readonly filename: string;
   constructor(filename?: string);
-  private readDocument;
-  read(): Promise<AntigravityGrant | undefined>;
-  write(credential: AntigravityGrant): Promise<AntigravityGrant>;
-  modify(fn: (current: AntigravityGrant | undefined) => Promise<AntigravityGrant | undefined>): Promise<AntigravityGrant | undefined>;
-  clear(): Promise<void>;
+  private readParsed;
+  private writeDocument;
+  list(): Promise<StoredAccount[]>;
+  active(): Promise<StoredAccount | undefined>;
+  get(id: string): Promise<StoredAccount | undefined>;
+  add(grant: AntigravityGrant): Promise<StoredAccount>;
+  update(id: string, patch: Partial<AntigravityGrant>): Promise<StoredAccount>;
+  setActive(id: string): Promise<void>;
+  remove(id: string): Promise<StoredAccount>;
 }
 //#endregion
 //#region src/network.d.ts
@@ -217,36 +231,44 @@ declare class AntigravityNetwork {
 type FetchImpl = typeof fetch;
 declare class AntigravitySession {
   readonly store: AntigravityCredentialStore;
-  readonly cca: CcaClient;
-  readonly ccaSession: CcaSession;
   readonly thoughtSignatures: Map<string, string>;
+  readonly network: AntigravityNetwork;
   private readonly fetchImpl;
-  private lastRefreshAttempt;
+  private readonly runtimes;
+  private readonly precheckAt;
+  private readonly precheckInFlight;
+  private readonly refreshAttempts;
+  private login;
   private operation;
   private cancellation;
   private listening;
   private pendingUrl;
   private pendingState;
   private callbackServer;
-  private account;
-  readonly network: AntigravityNetwork;
   private serviceError;
   private completing;
   private eligibility;
   constructor(store: AntigravityCredentialStore, fetchImpl?: FetchImpl);
-  snapshot(): Promise<AntigravityAccountState>;
-  readStored(): Promise<AntigravityAccountState>;
+  private runtimeFor;
+  acquire(): Promise<AntigravityLease | undefined>;
+  hasReadyAccount(): Promise<boolean>;
+  noteRateLimited(accountId: string): void;
+  noteAuthRejected(accountId: string): void;
+  snapshot(): Promise<AntigravityStatus>;
+  private summarizeAccounts;
+  private precheckAccount;
   credential(): Promise<AntigravityOAuth | undefined>;
-  requireCredential(): Promise<AntigravityOAuth>;
   refreshIfNeeded(now?: number): Promise<AntigravityOAuth | undefined>;
   private refreshGrant;
+  switchAccount(accountId: string): Promise<AntigravityStatus>;
+  removeAccount(accountId: string): Promise<AntigravityStatus>;
   signIn(): Promise<{
     url: string;
   }>;
   waitUntilSettled(): Promise<void>;
-  complete(raw: string): Promise<AntigravityAccountState>;
+  complete(raw: string): Promise<AntigravityStatus>;
   private finishCode;
-  retryEligibility(): Promise<AntigravityAccountState>;
+  retryEligibility(): Promise<AntigravityStatus>;
   cancel(): Promise<void>;
   signOut(): Promise<void>;
   dispose(): Promise<void>;

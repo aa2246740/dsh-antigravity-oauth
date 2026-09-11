@@ -69,7 +69,7 @@ describe('AntigravitySession login after logout', () => {
     try {
       const first = await session.signIn()
       await session.signOut()
-      expect(await session.snapshot()).toEqual({ status: 'signed-out' })
+      expect(await session.snapshot()).toEqual({ status: 'signed-out', accounts: [] })
       const second = await session.signIn()
       expect(new URL(second.url).hostname).toBe('accounts.google.com')
       expect(new URL(second.url).searchParams.get('state')).not.toBe(new URL(first.url).searchParams.get('state'))

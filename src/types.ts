@@ -1,3 +1,5 @@
+import type { CcaClient } from './cca-client.ts'
+
 export type CcaKind = 'chat' | 'search'
 
 export type AntigravityGrant = {
@@ -93,12 +95,28 @@ export type CcaEvent =
   | { type: 'finish', reason: string, responseId?: string }
   | { type: 'error', code?: number, message: string }
 
-export type AntigravityAccountState =
-  | { status: 'signed-out' }
-  | { status: 'signing-in', url?: string }
-  | { status: 'authorized', email?: string, message: string, eligibility?: EligibilitySummary }
-  | { status: 'signed-in', email?: string, expiresAt?: string, projectId: string }
-  | { status: 'error', message: string }
+export type AccountSummary = {
+  id: string
+  email?: string
+  projectId?: string
+  expiresAt?: string
+  ready: boolean
+  limited: boolean
+  dead: boolean
+}
+
+export type AntigravityStatus =
+  | { status: 'signed-out', accounts: [] }
+  | { status: 'signing-in', url?: string, accounts: AccountSummary[] }
+  | { status: 'error', message: string, accounts: AccountSummary[] }
+  | { status: 'signed-in', activeId: string, message?: string, accounts: AccountSummary[] }
+
+export type AntigravityLease = {
+  oauth: AntigravityOAuth
+  accountId: string
+  email?: string
+  cca: CcaClient
+}
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)

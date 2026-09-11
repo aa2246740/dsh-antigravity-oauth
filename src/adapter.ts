@@ -41,6 +41,7 @@ import {
 } from './search-turn.ts'
 import type { AntigravitySession } from './session.ts'
 import type {
+  AntigravityLease,
   CcaEvent,
   CcaUsage,
   ChatGenerateInput,
@@ -215,8 +216,8 @@ export class AntigravityAdapter extends LlmAdapter {
     if (!isPublicModelId(options.model)) {
       throw new LlmError(`unknown Antigravity model "${options.model}"`, 'UNKNOWN_MODEL')
     }
-    const oauth = await this.session.refreshIfNeeded()
-    if (oauth === undefined) {
+    const lease = await this.session.acquire()
+    if (lease === undefined) {
       throw new LlmError(
         'Antigravity is not connected. Open Settings and sign in.',
         'MISSING_CREDENTIAL',
@@ -252,7 +253,7 @@ export class AntigravityAdapter extends LlmAdapter {
       ? AbortSignal.timeout(idleMs)
       : AbortSignal.any([options.signal, AbortSignal.timeout(idleMs)])
     try {
-      yield* this.emitChat(options, input, state, watchdog)
+      yield* this.emitChat(options, input, state, watchdog, lease)
       yield* this.closeThought(state)
       yield* this.closeText(state)
       if (state.usage !== undefined) yield { type: 'usage', usage: state.usage }
@@ -274,16 +275,24 @@ export class AntigravityAdapter extends LlmAdapter {
       yield { type: 'finish', reason: { kind } }
     } catch (error: unknown) {
       if (error instanceof LlmError) throw error
-      const message = error instanceof Error
+      let message = error instanceof Error
         ? (error.cause instanceof Error ? `${error.message}: ${error.cause.message}` : error.message)
         : String(error)
       const code = /\b401\b|\b403\b/.test(message)
         ? 'AUTH'
-        : /\b429\b/.test(message)
+        : /\b429\b|RESOURCE_EXHAUSTED|quota exhausted/i.test(message)
           ? 'RATE_LIMIT'
           : /\b5\d\d\b/.test(message)
             ? 'SERVER'
             : 'TRANSPORT'
+      if (code === 'RATE_LIMIT') {
+        this.session.noteRateLimited(lease.accountId)
+        const who = lease.email === undefined ? '' : ` (${lease.email})`
+        message = `Antigravity quota exhausted for this account${who}.`
+          + ' Switch to another saved account in Settings → Antigravity.'
+          + ` [${message}]`
+      }
+      if (code === 'AUTH') this.session.noteAuthRejected(lease.accountId)
       throw new LlmError(message, code, { cause: error })
     }
   }
@@ -293,17 +302,11 @@ export class AntigravityAdapter extends LlmAdapter {
     input: ChatGenerateInput,
     state: EmitState,
     watchdog: AbortSignal,
+    lease: AntigravityLease,
   ): AsyncIterable<StreamChunk> {
-    const oauth = await this.session.refreshIfNeeded()
-    if (oauth === undefined) {
-      throw new LlmError(
-        'Antigravity is not connected. Open Settings and sign in.',
-        'MISSING_CREDENTIAL',
-      )
-    }
     const pendingSearches: SearchTurnCall[] = []
     const attachments = this.options.resolveAttachments?.()
-    for await (const event of this.session.cca.chat(oauth, input, options.signal)) {
+    for await (const event of lease.cca.chat(lease.oauth, input, options.signal)) {
       if (watchdog.aborted) throw new LlmError('Antigravity stream idle timeout', 'TIMEOUT')
       if (event.type === 'usage') {
         state.usage = mergeUsage(state.usage, event.usage)
@@ -392,12 +395,12 @@ export class AntigravityAdapter extends LlmAdapter {
       if (pendingSearches.length > 0) {
         for (const call of pendingSearches) {
           const query = parseSearchWebArgs(call.args)
-          const collected = await this.collectSearch(options, query, watchdog)
+          const collected = await this.collectSearch(options, query, watchdog, lease)
           state.usage = mergeUsage(state.usage, collected.usage)
           state.searchRounds.push({ query, result: collected.text })
         }
       } else if (memoQuery !== undefined) {
-        const collected = await this.collectSearch(options, memoQuery, watchdog)
+        const collected = await this.collectSearch(options, memoQuery, watchdog, lease)
         state.usage = mergeUsage(state.usage, collected.usage)
         state.searchRounds.push({ query: memoQuery, result: collected.text })
       }
@@ -416,7 +419,7 @@ export class AntigravityAdapter extends LlmAdapter {
           ...input,
           contents,
           system: withSearchContinueGuidance(input.system),
-        }, state, watchdog)
+        }, state, watchdog, lease)
         if (state.sawVisibleAnswer || state.toolNames.length > 0) return
       } else {
         input = { ...input, contents }
@@ -434,7 +437,7 @@ export class AntigravityAdapter extends LlmAdapter {
         contents: appendSearchDossier(input.contents, state.searchRounds),
         functions: withoutSearchWeb(input.functions),
         system: withSearchContinueGuidance(`${input.system ?? ''}\n\n${SEARCH_ANSWER_GUIDANCE}`),
-      }, state, watchdog)
+      }, state, watchdog, lease)
       return
     }
     yield* this.emitChat(options, {
@@ -442,28 +445,22 @@ export class AntigravityAdapter extends LlmAdapter {
       contents: appendContinueMemo(input.contents),
       functions: state.answerPass ? withoutSearchWeb(input.functions) : input.functions,
       system: withSearchContinueGuidance(input.system),
-    }, state, watchdog)
+    }, state, watchdog, lease)
   }
 
   private async collectSearch(
     options: GenerateOptions,
     query: string,
     watchdog: AbortSignal,
+    lease: AntigravityLease,
   ): Promise<{ text: string, usage?: CcaUsage }> {
-    const oauth = await this.session.refreshIfNeeded()
-    if (oauth === undefined) {
-      throw new LlmError(
-        'Antigravity is not connected. Open Settings and sign in.',
-        'MISSING_CREDENTIAL',
-      )
-    }
     if (!isPublicModelId(options.model)) {
       throw new LlmError(`unknown Antigravity model "${options.model}"`, 'UNKNOWN_MODEL')
     }
     const effort = effortOf(options)
     let text = ''
     let usage: CcaUsage | undefined
-    for await (const event of this.session.cca.search(oauth, {
+    for await (const event of lease.cca.search(lease.oauth, {
       kind: 'search',
       model: routeChatModel(options.model, effort),
       query,
