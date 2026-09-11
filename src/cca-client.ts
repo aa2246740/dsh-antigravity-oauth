@@ -85,6 +85,8 @@ export class CcaClient {
       : buildChatBody(oauth.projectId, input, advanceEnvelope(this.session, input.model, this.now(), this.lastExecutionId))
     const endpoints = this.endpoints()
     let lastError: Error | undefined
+    const isolated = isolateAbort(signal)
+    try {
     for (let index = 0; index < endpoints.length; index += 1) {
       const endpoint = endpoints[index]!
       const url = streamGenerateContentUrl(endpoint)
@@ -93,7 +95,7 @@ export class CcaClient {
           method: 'POST',
           headers: this.headers(oauth.access),
           body: JSON.stringify(body),
-          signal,
+          signal: isolated.signal,
         })
         if (!response.ok) {
           const text = await response.text()
@@ -108,7 +110,7 @@ export class CcaClient {
         if (response.body === null) throw new Error('CCA stream had no body')
         this.session.lastGoodEndpoint = endpoint
         let sawFinish = false
-        for await (const raw of readSseJson(response.body, signal)) {
+        for await (const raw of readSseJson(response.body, isolated.signal)) {
           const events = parseCcaChunk(raw)
           for (const event of events) {
             if (event.type === 'finish' && event.responseId !== undefined) {
@@ -128,6 +130,21 @@ export class CcaClient {
       }
     }
     throw lastError ?? new Error('CCA request failed')
+    } finally {
+      isolated.dispose()
+    }
+  }
+}
+
+export function isolateAbort(signal?: AbortSignal): { signal?: AbortSignal; dispose: () => void } {
+  if (signal === undefined) return { dispose() {} }
+  const local = new AbortController()
+  const onAbort = (): void => { local.abort() }
+  if (signal.aborted) local.abort()
+  else signal.addEventListener('abort', onAbort)
+  return {
+    signal: local.signal,
+    dispose: () => { signal.removeEventListener('abort', onAbort) },
   }
 }
 

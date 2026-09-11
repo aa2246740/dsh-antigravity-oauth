@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AntigravityKey } from './locales.ts'
-import type { AntigravityAccountState as AccountState } from '../types.ts'
+import type { AntigravityStatus } from '../types.ts'
 
 const STATUS_PATH = '/plugins/dsh-antigravity-oauth/auth/status'
 const LOGIN_PATH = '/plugins/dsh-antigravity-oauth/auth/login'
 const COMPLETE_PATH = '/plugins/dsh-antigravity-oauth/auth/complete'
 const LOGOUT_PATH = '/plugins/dsh-antigravity-oauth/auth/logout'
+const SWITCH_PATH = '/plugins/dsh-antigravity-oauth/auth/accounts/switch'
+const REMOVE_PATH = '/plugins/dsh-antigravity-oauth/auth/accounts/remove'
 const POLL_INTERVAL_MS = 1_000
 const STYLE_ID = 'dsh-antigravity-oauth-settings-theme'
 
@@ -59,6 +61,24 @@ const SETTINGS_CSS = `
   color:var(--dsw-alias-label-primary); font:inherit; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .dsh-agy-actions { display:flex; justify-content:flex-end; }
+.dsh-agy-account {
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  padding:8px 10px; border:1px solid var(--dsw-alias-border-l2); border-radius:8px;
+}
+.dsh-agy-account-main { display:flex; align-items:center; gap:8px; flex:1 1 auto; min-width:0; cursor:pointer; }
+.dsh-agy-account-main input[type="radio"] { accent-color:var(--dsw-alias-brand-primary, #1677ff); }
+.dsh-agy-account-mail { font-size:13px; color:var(--dsw-alias-label-primary); word-break:break-all; }
+.dsh-agy-badges { display:inline-flex; gap:6px; flex-wrap:wrap; }
+.dsh-agy-badge {
+  display:inline-flex; align-items:center; padding:1px 8px; border-radius:10px;
+  font-size:12px; line-height:18px;
+  border:1px solid var(--dsw-alias-border-l2); color:var(--dsw-alias-label-secondary);
+}
+.dsh-agy-badge.is-error {
+  border-color:var(--dsw-alias-state-error-primary, #d92d20);
+  color:var(--dsw-alias-state-error-primary, #d92d20);
+}
+.dsh-agy-remove { margin-left:auto; }
 `
 
 function ensureThemeStyles(): void {
@@ -89,7 +109,7 @@ async function jsonRequest<T>(path: string, method = 'GET', body?: unknown): Pro
 
 export function AntigravitySettings({ t }: AntigravitySettingsProps) {
   if (t === undefined) throw new Error('Antigravity settings requires its translation function')
-  const [account, setAccount] = useState<AccountState | undefined>(undefined)
+  const [status, setStatus] = useState<AntigravityStatus | undefined>(undefined)
   const [error, setError] = useState<string | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [draft, setDraft] = useState('')
@@ -100,7 +120,7 @@ export function AntigravitySettings({ t }: AntigravitySettingsProps) {
 
   const refresh = useCallback(async () => {
     try {
-      setAccount(await jsonRequest<AccountState>(STATUS_PATH))
+      setStatus(await jsonRequest<AntigravityStatus>(STATUS_PATH))
       setError(undefined)
     } catch (caught: unknown) {
       setError(caught instanceof Error ? caught.message : t('requestFailed'))
@@ -109,9 +129,9 @@ export function AntigravitySettings({ t }: AntigravitySettingsProps) {
 
   useEffect(() => { void refresh() }, [refresh])
   useEffect(() => {
-    void jsonRequest<Network>(NETWORK_PATH).then(setNetwork).catch(error => setError(String(error)))
+    void jsonRequest<Network>(NETWORK_PATH).then(setNetwork).catch(err => setError(String(err)))
   }, [])
-  const signing = account?.status === 'signing-in'
+  const signing = status?.status === 'signing-in'
   useEffect(() => {
     if (!signing) return
     const timer = window.setInterval(() => { void refresh() }, POLL_INTERVAL_MS)
@@ -151,7 +171,32 @@ export function AntigravitySettings({ t }: AntigravitySettingsProps) {
     }
   }
 
-  const signOut = async (): Promise<void> => {
+  const removeAccount = async (id: string): Promise<void> => {
+    setBusy(true)
+    try {
+      const result = await jsonRequest<{ ok: true, account: AntigravityStatus }>(REMOVE_PATH, 'POST', { id })
+      setStatus(result.account)
+      await refresh()
+    } catch (caught: unknown) {
+      setError(caught instanceof Error ? caught.message : t('requestFailed'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const switchAccount = async (id: string): Promise<void> => {
+    setBusy(true)
+    try {
+      const result = await jsonRequest<{ ok: true, account: AntigravityStatus }>(SWITCH_PATH, 'POST', { id })
+      setStatus(result.account)
+    } catch (caught: unknown) {
+      setError(caught instanceof Error ? caught.message : t('requestFailed'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const signOutActive = async (): Promise<void> => {
     setBusy(true)
     try {
       await jsonRequest<{ ok: true }>(LOGOUT_PATH, 'POST', {})
@@ -169,7 +214,7 @@ export function AntigravitySettings({ t }: AntigravitySettingsProps) {
       await jsonRequest(`/plugins/dsh-antigravity-oauth/auth/${action}`, 'POST', {})
       setDraft('')
       await refresh()
-    } catch (error) { setError(String(error)) } finally { setBusy(false) }
+    } catch (err) { setError(String(err)) } finally { setBusy(false) }
   }
 
   const saveNetwork = async (): Promise<void> => {
@@ -178,25 +223,31 @@ export function AntigravitySettings({ t }: AntigravitySettingsProps) {
     try {
       setNetwork(await jsonRequest<Network>(NETWORK_PATH, 'POST', { mode: network.mode, url: network.url }))
       setNetworkMessage(t('networkSaved'))
-    } catch (error) { setError(String(error)) } finally { setBusy(false) }
+    } catch (err) { setError(String(err)) } finally { setBusy(false) }
   }
 
-  const label = account === undefined
+  const accounts = status?.accounts ?? []
+  const activeId = status?.status === 'signed-in' ? status.activeId : undefined
+  const activeAccount = accounts.find(account => account.id === activeId)
+  const loginError = status?.status === 'error' ? status.message : undefined
+  const serviceMessage = status?.status === 'signed-in' ? status.message : undefined
+
+  const label = status === undefined
     ? t('loadingAccount')
-    : account.status === 'signed-in'
-      ? t('signedIn')
-      : account.status === 'authorized'
-        ? t('authorized')
-      : account.status === 'signing-in'
-        ? t('signingIn')
-        : account.status === 'error'
-          ? t('requestFailed')
-          : t('signedOut')
-  const dotClass = account?.status === 'signed-in'
+    : status.status === 'signing-in'
+      ? t('signingIn')
+      : status.status === 'error'
+        ? t('requestFailed')
+        : status.status === 'signed-out'
+          ? t('signedOut')
+          : activeAccount?.ready === false
+            ? t('authorized')
+            : t('signedIn')
+  const dotClass = status?.status === 'signed-in'
     ? 'dsh-agy-dot is-signed-in'
-    : account?.status === 'error'
+    : status?.status === 'error'
       ? 'dsh-agy-dot is-error'
-      : account?.status === 'signing-in'
+      : status?.status === 'signing-in'
         ? 'dsh-agy-dot is-signing-in'
         : 'dsh-agy-dot'
 
@@ -223,50 +274,66 @@ export function AntigravitySettings({ t }: AntigravitySettingsProps) {
       </div>}
       <article className="dsh-agy-card">
         <div className="dsh-agy-row">
-          <p className="dsh-agy-name">{t('title')}</p>
-          {account?.status === 'signed-in' || account?.status === 'authorized'
-            ? (
-                <button type="button" className="dsh-agy-btn dsh-agy-btn-secondary" disabled={busy} onClick={() => { void signOut() }}>
-                  {busy ? t('working') : t('logout')}
-                </button>
-              )
-            : account?.status === 'signing-in' ? (
-                <button type="button" className="dsh-agy-btn dsh-agy-btn-secondary" onClick={() => { void recover('cancel') }}>{t('cancel')}</button>
-              ) : (
-                <button type="button" className="dsh-agy-btn dsh-agy-btn-primary" disabled={busy} onClick={() => { void signIn() }}>
-                  {busy ? t('working') : account?.status === 'error' ? t('loginAgain') : t('login')}
-                </button>
-              )}
+          <p className="dsh-agy-name">{t('accounts')}</p>
+          {signing ? (
+            <button type="button" className="dsh-agy-btn dsh-agy-btn-secondary" onClick={() => { void recover('cancel') }}>{t('cancel')}</button>
+          ) : (
+            <button type="button" className="dsh-agy-btn dsh-agy-btn-primary" disabled={busy}
+              onClick={() => { void signIn() }}>
+              {busy ? t('working') : status?.status === 'error' ? t('loginAgain') : accounts.length === 0 ? t('login') : t('addAccount')}
+            </button>
+          )}
         </div>
         <div className="dsh-agy-status" role="status">
           <span aria-hidden="true" className={dotClass} />
           <span>{label}</span>
         </div>
-        {account?.status === 'error' ? <p className="dsh-agy-error">{account.message}</p> : null}
-        {account?.status === 'authorized' && <>
-          <p className="dsh-agy-body">{t('authorizedHelp')}</p>
-          <p className="dsh-agy-error">{account.message}</p>
-          <button type="button" className="dsh-agy-btn dsh-agy-btn-primary" disabled={busy}
-            onClick={() => { void recover('retry') }}>{busy ? t('working') : t('retryEligibility')}</button>
-          {busy && <button type="button" className="dsh-agy-btn dsh-agy-btn-secondary"
-            onClick={() => { void recover('cancel') }}>{t('cancel')}</button>}
-        </>}
-        {account?.status === 'signed-in' && account.email !== undefined
-          ? <p className="dsh-agy-body">{t('email')} {account.email}</p>
-          : null}
-        {account?.status === 'signed-in'
-          ? <p className="dsh-agy-body">{t('project')} {account.projectId}</p>
-          : null}
-        {account?.status === 'signing-in' && account.url !== undefined
+        {loginError !== undefined ? <p className="dsh-agy-error">{loginError}</p> : null}
+        {serviceMessage !== undefined ? <p className="dsh-agy-error">{serviceMessage}</p> : null}
+        {accounts.length > 0 ? <p className="dsh-agy-body">{t('quotaHint')}</p> : null}
+        {accounts.map((account) => {
+          return (
+            <div className="dsh-agy-account" key={account.id}>
+              <label className="dsh-agy-account-main">
+                <input
+                  type="radio"
+                  name="dsh-agy-active-account"
+                  aria-label={t('switchAccount')}
+                  checked={account.id === activeId}
+                  disabled={busy || signing}
+                  onChange={() => { void switchAccount(account.id) }}
+                />
+                <span className="dsh-agy-account-mail">{account.email ?? t('unknownAccount')}</span>
+                <span className="dsh-agy-badges">
+                  {account.dead ? <span className="dsh-agy-badge is-error">{t('accountNeedsRelogin')}</span> : null}
+                  {account.limited ? <span className="dsh-agy-badge">{t('accountLimited')}</span> : null}
+                  {!account.ready && !account.dead ? <span className="dsh-agy-badge">{t('accountNeedsEligibility')}</span> : null}
+                </span>
+              </label>
+              {account.projectId !== undefined ? (
+                <span className="dsh-agy-body">{t('project')} {account.projectId}</span>
+              ) : null}
+              <button
+                type="button"
+                className="dsh-agy-btn dsh-agy-btn-secondary dsh-agy-remove"
+                disabled={busy || signing}
+                onClick={() => {
+                  void (account.id === activeId ? signOutActive() : removeAccount(account.id))
+                }}
+              >{t('removeAccount')}</button>
+            </div>
+          )
+        })}
+        {signing && status?.status === 'signing-in' && status.url !== undefined
           ? (
               <p className="dsh-agy-body">
                 {t('openUrl')}
                 {' '}
-                <a href={account.url} target="_blank" rel="noreferrer" className="dsh-agy-link">{t('reopen')}</a>
+                <a href={status.url} target="_blank" rel="noreferrer" className="dsh-agy-link">{t('reopen')}</a>
               </p>
             )
           : null}
-        {account?.status === 'signing-in'
+        {signing
           ? (
               <form
                 className="dsh-agy-form"
@@ -292,6 +359,12 @@ export function AntigravitySettings({ t }: AntigravitySettingsProps) {
                   </button>
                 </div>
               </form>
+            )
+          : null}
+        {activeAccount !== undefined && !activeAccount.ready
+          ? (
+              <button type="button" className="dsh-agy-btn dsh-agy-btn-primary" disabled={busy}
+                onClick={() => { void recover('retry') }}>{busy ? t('working') : t('retryEligibility')}</button>
             )
           : null}
       </article>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CcaClient } from '../src/cca-client.ts'
+import { CcaClient, isolateAbort } from '../src/cca-client.ts'
 import { createCcaSession } from '../src/envelope.ts'
 import type { AntigravityOAuth, CcaEvent } from '../src/types.ts'
 
@@ -81,5 +81,41 @@ describe('CcaClient', () => {
     expect(request.sessionId).toBeUndefined()
     expect(request.tools).toEqual([{ googleSearch: {} }])
     expect(events.some(event => event.type === 'text' && event.text === 'grounded')).toBe(true)
+  })
+
+  it('isolates fetch abort from the agent cancel cause', async () => {
+    const agent = new AbortController()
+    const cause = { kind: 'user' as const }
+    const isolated = isolateAbort(agent.signal)
+    expect(isolated.signal).not.toBe(agent.signal)
+    agent.abort(cause)
+    Object.assign(isolated.signal?.reason ?? {}, { stack: 'Error\n    at undici' })
+    expect(cause).toEqual({ kind: 'user' })
+    isolated.dispose()
+
+    let fetchSignal: AbortSignal | undefined
+    const live = new AbortController()
+    const client = new CcaClient({
+      session: createCcaSession('https://daily-cloudcode-pa.googleapis.com'),
+      fetch: async (_input, init) => {
+        fetchSignal = init?.signal ?? undefined
+        return sseResponse([{
+          response: {
+            candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
+          },
+        }], String(_input))
+      },
+    })
+    const events: CcaEvent[] = []
+    for await (const event of client.chat(oauth, {
+      kind: 'chat',
+      model: 'gemini-3.7-flash-medium',
+      contents: [{ role: 'user', parts: [{ text: 'hi' }] }],
+      functions: [],
+    }, live.signal)) {
+      events.push(event)
+    }
+    expect(fetchSignal).not.toBe(live.signal)
+    expect(events.some(event => event.type === 'text' && event.text === 'ok')).toBe(true)
   })
 })

@@ -14,7 +14,11 @@ export async function* readSseJson(
   stream: ReadableStream<Uint8Array>,
   signal?: AbortSignal,
 ): AsyncGenerator<unknown> {
-  const reader = stream.pipeThrough(new TextDecoderStream()).getReader()
+  const decoder = new TextDecoderStream() as unknown as {
+    readable: ReadableStream<string>
+    writable: WritableStream<Uint8Array>
+  }
+  const reader = stream.pipeThrough(decoder).getReader()
   let buffer = ''
   try {
     while (true) {

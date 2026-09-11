@@ -10,6 +10,8 @@ export const AUTH_STATUS_PATH = '/plugins/dsh-antigravity-oauth/auth/status'
 export const AUTH_LOGIN_PATH = '/plugins/dsh-antigravity-oauth/auth/login'
 export const AUTH_COMPLETE_PATH = '/plugins/dsh-antigravity-oauth/auth/complete'
 export const AUTH_LOGOUT_PATH = '/plugins/dsh-antigravity-oauth/auth/logout'
+export const ACCOUNT_SWITCH_PATH = '/plugins/dsh-antigravity-oauth/auth/accounts/switch'
+export const ACCOUNT_REMOVE_PATH = '/plugins/dsh-antigravity-oauth/auth/accounts/remove'
 
 export const DAILY_ENDPOINT = 'https://daily-cloudcode-pa.googleapis.com'
 export const SANDBOX_ENDPOINT = 'https://daily-cloudcode-pa.sandbox.googleapis.com'
@@ -42,3 +44,7 @@ export const OAUTH_REFRESH_SOON_MS = 15 * 60 * 1000
 export const OAUTH_REFRESH_POLL_MS = 15 * 60 * 1000
 export const OAUTH_REFRESH_COOLDOWN_MS = 5 * 60 * 1000
 export const OAUTH_EXPIRES_SKEW_MS = 5 * 60 * 1000
+
+export const RATE_LIMIT_COOLDOWN_MS = 10 * 60 * 1000
+export const RATE_LIMIT_COOLDOWN_MAX_MS = 2 * 60 * 60 * 1000
+export const PRECHECK_INTERVAL_MS = 24 * 60 * 60 * 1000

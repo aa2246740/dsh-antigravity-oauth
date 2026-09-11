@@ -1,6 +1,7 @@
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { describe, expect, it } from 'vitest'
 import { createAntigravityAdapter } from '../src/adapter.ts'
+import { CcaHttpError } from '../src/cca-client.ts'
 import type { AntigravitySession } from '../src/session.ts'
 import type { CcaEvent, ChatGenerateInput, SearchGenerateInput } from '../src/types.ts'
 
@@ -50,23 +51,29 @@ function fakeSession(script: {
   const searchScripts = asScripts(script.search ?? [{ type: 'text', text: 'grounded news' }, { type: 'finish', reason: 'STOP' }])
   let chatIndex = 0
   let searchIndex = 0
+  const cca = {
+    async *chat(_oauth: unknown, input: ChatGenerateInput): AsyncIterable<CcaEvent> {
+      chatBodies.push(input)
+      const events = chatScripts[Math.min(chatIndex, chatScripts.length - 1)] ?? [{ type: 'finish' as const, reason: 'STOP' }]
+      chatIndex += 1
+      for (const event of events) yield event
+    },
+    async *search(_oauth: unknown, input: SearchGenerateInput): AsyncIterable<CcaEvent> {
+      searchQueries.push(input.query)
+      const events = searchScripts[Math.min(searchIndex, searchScripts.length - 1)] ?? [{ type: 'text' as const, text: 'grounded news' }, { type: 'finish' as const, reason: 'STOP' }]
+      searchIndex += 1
+      for (const event of events) yield event
+    },
+  }
   const session = {
     thoughtSignatures: new Map<string, string>(),
-    refreshIfNeeded: async () => oauth,
-    cca: {
-      async *chat(_oauth: unknown, input: ChatGenerateInput): AsyncIterable<CcaEvent> {
-        chatBodies.push(input)
-        const events = chatScripts[Math.min(chatIndex, chatScripts.length - 1)] ?? [{ type: 'finish' as const, reason: 'STOP' }]
-        chatIndex += 1
-        for (const event of events) yield event
-      },
-      async *search(_oauth: unknown, input: SearchGenerateInput): AsyncIterable<CcaEvent> {
-        searchQueries.push(input.query)
-        const events = searchScripts[Math.min(searchIndex, searchScripts.length - 1)] ?? [{ type: 'text' as const, text: 'grounded news' }, { type: 'finish' as const, reason: 'STOP' }]
-        searchIndex += 1
-        for (const event of events) yield event
-      },
-    },
+    acquire: async () => ({
+      oauth,
+      accountId: 'acc_test',
+      email: 'test@example.test',
+      cca,
+    }),
+    cca,
   } as unknown as AntigravitySession
   return { session, chatBodies, searchQueries }
 }
@@ -359,7 +366,7 @@ describe('AntigravityAdapter search', () => {
         },
       ],
     } as unknown as GenerateOptions
-    fake.session.cca.chat = async function* (_oauth: unknown, input: ChatGenerateInput) {
+    ;(fake.session as unknown as { cca: { chat: unknown } }).cca.chat = async function* (_oauth: unknown, input: ChatGenerateInput) {
       fake.chatBodies.push(input)
       yield { type: 'text' as const, text: 'ok' }
       yield { type: 'finish' as const, reason: 'STOP' }
@@ -378,5 +385,29 @@ describe('AntigravityAdapter search', () => {
       functionResponse: { name: string }
     }
     expect(response?.functionResponse.name).toBe('skill')
+  })
+
+  it('names the exhausted account and marks it rate limited on a quota error', async () => {
+    const limited: string[] = []
+    const session = {
+      thoughtSignatures: new Map<string, string>(),
+      acquire: async () => ({
+        oauth,
+        accountId: 'acc_one',
+        email: 'a@example.test',
+        cca: {
+          async *chat(): AsyncIterable<CcaEvent> {
+            throw new CcaHttpError(429, 'RESOURCE_EXHAUSTED')
+          },
+        },
+      }),
+      noteRateLimited: (id: string) => { limited.push(id) },
+    } as unknown as AntigravitySession
+    const adapter = createAntigravityAdapter(session, {
+      nativeTools: true,
+      nativeSearch: true,
+    })
+    await expect(collect(adapter.stream(options('hi')))).rejects.toThrow(/a@example\.test/)
+    expect(limited).toEqual(['acc_one'])
   })
 })

@@ -3,3 +3,15 @@ entry: src/index.ts
 marker: "[my-plugins/dsh-antigravity-oauth] loaded"
 kind: function
 profile: web
+hotReload:
+  artifacts:
+    - src/index.ts
+    - src/ids.ts
+    - src/types.ts
+    - src/store.ts
+    - src/session.ts
+    - src/adapter.ts
+    - src/cca-client.ts
+    - src/auth-routes.ts
+    - src/sse.ts
+    - lib/index.js

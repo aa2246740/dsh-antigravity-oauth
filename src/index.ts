@@ -63,8 +63,7 @@ async function syncAuthenticatedRoute(
   session: AntigravitySession,
   registration: AdapterRegistrationHandle,
 ): Promise<void> {
-  const credential = await session.credential()
-  registration.replace(credential === undefined ? [] : [HARNESS_ROUTE])
+  registration.replace(await session.hasReadyAccount() ? [HARNESS_ROUTE] : [])
 }
 
 export function apply(ctx: Context, config: Config): void {

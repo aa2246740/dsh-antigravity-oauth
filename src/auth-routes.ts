@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
-import { AUTH_COMPLETE_PATH, AUTH_LOGIN_PATH, AUTH_LOGOUT_PATH, AUTH_STATUS_PATH } from './ids.ts'
+import { ACCOUNT_REMOVE_PATH, ACCOUNT_SWITCH_PATH, AUTH_COMPLETE_PATH, AUTH_LOGIN_PATH, AUTH_LOGOUT_PATH, AUTH_STATUS_PATH } from './ids.ts'
 import { isSafeAuthUrl, safeMessage } from './redact.ts'
 import type { AntigravitySession } from './session.ts'
 import { NETWORK_PATH } from './network.ts'
@@ -132,6 +132,42 @@ export function registerAntigravityAuthRoutes(
           } catch (error: unknown) {
             json(res, 500, { error: safeMessage(error) })
           }
+        },
+      }),
+      ctx.webServer.register({
+        kind: 'exact',
+        path: ACCOUNT_SWITCH_PATH,
+        handler: async (req, res) => {
+          if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' })
+          if (!trustedRequest(req)) return json(res, 403, { error: 'forbidden' })
+          try {
+            const body = await readJson(req)
+            const id = typeof (body as Record<string, unknown>).id === 'string'
+              ? (body as Record<string, unknown>).id as string
+              : ''
+            if (id.length === 0) throw new Error('expected { "id": "..." }')
+            await session.switchAccount(id)
+            await notify()
+            json(res, 200, { ok: true, account: await session.snapshot() })
+          } catch (error) { json(res, 400, { error: safeMessage(error) }) }
+        },
+      }),
+      ctx.webServer.register({
+        kind: 'exact',
+        path: ACCOUNT_REMOVE_PATH,
+        handler: async (req, res) => {
+          if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' })
+          if (!trustedRequest(req)) return json(res, 403, { error: 'forbidden' })
+          try {
+            const body = await readJson(req)
+            const id = typeof (body as Record<string, unknown>).id === 'string'
+              ? (body as Record<string, unknown>).id as string
+              : ''
+            if (id.length === 0) throw new Error('expected { "id": "..." }')
+            await session.removeAccount(id)
+            await notify()
+            json(res, 200, { ok: true, account: await session.snapshot() })
+          } catch (error) { json(res, 400, { error: safeMessage(error) }) }
         },
       }),
       ctx.webServer.register({
