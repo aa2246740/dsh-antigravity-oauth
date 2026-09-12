@@ -2,6 +2,35 @@
 
 English | [中文](README.zh.md)
 
+```sh
+dsh plugin --profile web add github:aa2246740/dsh-antigravity-oauth
+```
+
+You need official `dsh` (or `npx @deepseek-ai/dsh`) and **pnpm** on `PATH`. `dsh plugin add` runs pnpm in `$DSH_HOME/profiles/web` and, because this package declares `dsh.bundle.patch`, appends the bundle to that profile. Then **restart that Host and reload the page**. The command writes the profile. It does not hot-load a running process.
+
+`lib/` is committed, so a git install does not need a local build, `prepare`, or `allowBuilds`. DeepSeek Harness **0.1.5-rc.2**. Node **22.19+**.
+
+If `dsh` is not on PATH:
+
+```sh
+npx @deepseek-ai/dsh plugin --profile web add github:aa2246740/dsh-antigravity-oauth
+```
+
+DSH.app's `desktop` profile rejects `github:`. Use `dsh web` and install into the `web` profile.
+
+From a local clone, keep the `file:` prefix so Host peers resolve:
+
+```sh
+git clone https://github.com/aa2246740/dsh-antigravity-oauth.git
+dsh plugin --profile web add file:./dsh-antigravity-oauth
+```
+
+That path also needs pnpm, then a Host restart and page reload. Open **Settings → Antigravity**. In a **new** chat, pick route `agy-google-antigravity`.
+
+```sh
+dsh plugin --profile web remove dsh-antigravity-oauth
+```
+
 Isolated, unofficial Gemini Cloud Code Assist login for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
 This is a community plugin. It is **not** Google Antigravity, **not** the public Gemini API, and **not** an official DeepSeek product.
@@ -60,27 +89,6 @@ It is **not** `dsh-oauth-login`. Do not merge the two.
 - Idle accounts keep their refresh token. When you open this settings page the plugin re-checks at most one token per idle account per day, and never touches the Antigravity endpoints for idle accounts. A dead token shows **Re-login required**.
 - All credentials live in one file: `{ version: 2, activeId, accounts: [...] }`. The first migration leaves a one-time `.dsh-antigravity-oauth.json.v1.bak` (owner-only). Rolling back to an older plugin release requires restoring that backup; removing extra accounts does not rewrite the file back to v1.
 - Each account keeps its own Antigravity request session. Switching accounts does not carry one account's request identifiers into the other.
-
----
-
-## Install
-
-Node **22.19+**. This compatibility branch targets DeepSeek Harness **0.1.5-rc.2**; the desktop launcher has a separate version.
-
-```sh
-git clone https://github.com/aa2246740/dsh-antigravity-oauth.git
-cd dsh-antigravity-oauth
-npm install
-DSHX_HARNESS=/absolute/path/to/deepseek-harness npm run build
-```
-
-Keep the `file:` prefix. This package treats DSH runtime as peer dependencies; a plain `./dsh-antigravity-oauth` symlink often cannot resolve them.
-
-```sh
-dsh plugin --profile web add file:./dsh-antigravity-oauth
-```
-
-Restart the Web Host (`dsh web` / DSH.app). Open **Settings → Antigravity**. In a **new** chat, pick route `agy-google-antigravity`.
 
 ---
 
