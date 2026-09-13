@@ -2,6 +2,35 @@
 
 [English](README.md) | 中文
 
+```sh
+dsh plugin --profile web add github:aa2246740/dsh-antigravity-oauth
+```
+
+PATH 上需要官方 `dsh`（或 `npx @deepseek-ai/dsh`）和 **pnpm**。`dsh plugin add` 会在 `$DSH_HOME/profiles/web` 里跑 pnpm，并因为本包装了 `dsh.bundle.patch` 而写入 profile bundles。然后**重启这个 Host，再刷新页面**。它只写 profile，不会热挂正在跑的进程。
+
+仓库已提交 `lib/`，git 安装不用再构建，也不走 `prepare` / `allowBuilds`。需要 DeepSeek Harness **0.1.5-rc.2**，Node **22.19+**。
+
+`dsh` 不在 PATH 时：
+
+```sh
+npx @deepseek-ai/dsh plugin --profile web add github:aa2246740/dsh-antigravity-oauth
+```
+
+DSH.app 的 `desktop` profile 不接受 `github:`。用 `dsh web` 装进 web profile。
+
+本地 clone 请保留 `file:` 前缀，否则 Host 的 peer 依赖经常解析不到：
+
+```sh
+git clone https://github.com/aa2246740/dsh-antigravity-oauth.git
+dsh plugin --profile web add file:./dsh-antigravity-oauth
+```
+
+同样需要 pnpm，然后重启 Host 并刷新页面。打开 **设置 → Antigravity**。在**新对话**里选路由 `agy-google-antigravity`。
+
+```sh
+dsh plugin --profile web remove dsh-antigravity-oauth
+```
+
 给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 用的**独立、非官方** Gemini Cloud Code Assist 登录插件。
 
 这是社区插件。**不是** Google Antigravity 官方产品，**不是** 公开 Gemini API，**也不是** DeepSeek 官方功能。
@@ -60,27 +89,6 @@
 - 闲置账号的 refresh token 长期有效。打开本设置页时，插件对每个闲置账号**每天最多做一次 token 预检**，不会为闲置账号请求任何 Antigravity 接口；token 失效会标"需要重新登录"。
 - 所有凭据都在一个文件里：`{ version: 2, activeId, accounts: [...] }`。首次迁移会留一份一次性的 `.dsh-antigravity-oauth.json.v1.bak`（仅所有者可读）。回退旧版插件需要用它恢复；删掉多余账号不会把文件改回 v1。
 - 每个账号有自己独立的 Antigravity 请求会话，切换账号不会把 A 号的请求标识带给 B 号。
-
----
-
-## 安装
-
-需要 Node **22.19+**。当前兼容分支面向 DeepSeek Harness **0.1.5-rc.2**；桌面壳版本号与 Host 版本号不同。
-
-```sh
-git clone https://github.com/aa2246740/dsh-antigravity-oauth.git
-cd dsh-antigravity-oauth
-npm install
-DSHX_HARNESS=/absolute/path/to/deepseek-harness npm run build
-```
-
-`file:` 前缀必须留着。本插件把 DSH 运行时当 peer dependency，写成 `./dsh-antigravity-oauth` 往往解析不到依赖。
-
-```sh
-dsh plugin --profile web add file:./dsh-antigravity-oauth
-```
-
-重启 Web Host（`dsh web` / DSH.app）。打开 **设置 → Antigravity**。在**新对话**里选路由 `agy-google-antigravity`。
 
 ---
 

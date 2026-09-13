@@ -36,6 +36,14 @@
     "LICENSE"
   ],
   "license": "Apache-2.0",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "dsh",
+    "antigravity",
+    "oauth",
+    "gemini"
+  ],
   "dependencies": {
     "undici": "^8.5.0"
   },
