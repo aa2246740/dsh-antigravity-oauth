@@ -29,6 +29,19 @@ describe('stock dsh plugin add', () => {
     expect(pkg.files).toContain('lib')
     expect(pkg.files).toContain('cordis.patch.yml')
     expect(pkg.keywords).toContain('dsh-plugin')
+    const peers = (pkg as { peerDependencies?: Record<string, string> }).peerDependencies ?? {}
+    for (const name of [
+      '@deepseek-ai/dsh-client-locale',
+      '@deepseek-ai/dsh-client-ui-renderer',
+      '@deepseek-ai/dsh-client-ui-settings',
+      '@deepseek-ai/dsh-client-ui-slots',
+    ]) {
+      expect(peers[name]).toBe('^0.1.5-rc.2')
+    }
+    expect(readme).toContain('0.1.5-rc.3')
+    expect(readmeZh).toContain('0.1.5-rc.3')
+    expect(readme).not.toContain('0.1.7-alpha')
+    expect(readmeZh).not.toContain('0.1.7-alpha')
   })
 
   it.each([
