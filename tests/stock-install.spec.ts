@@ -36,10 +36,10 @@ describe('stock dsh plugin add', () => {
       '@deepseek-ai/dsh-client-ui-settings',
       '@deepseek-ai/dsh-client-ui-slots',
     ]) {
-      expect(peers[name]).toBe('^0.1.5-rc.2')
+      expect(peers[name]).toBe('>=0.1.7-rc.1 <0.1.8')
     }
-    expect(readme).toContain('0.1.5-rc.3')
-    expect(readmeZh).toContain('0.1.5-rc.3')
+    expect(readme).toContain('0.1.7-rc.1')
+    expect(readmeZh).toContain('0.1.7-rc.1')
     expect(readme).not.toContain('0.1.7-alpha')
     expect(readmeZh).not.toContain('0.1.7-alpha')
   })

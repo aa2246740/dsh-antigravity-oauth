@@ -356,13 +356,10 @@ describe('AntigravityAdapter search', () => {
         },
         {
           id: 't1',
-          role: 'user',
+          role: 'tool',
           source: { kind: 'tool', callId: 'call_skill' },
-          content: [{
-            type: 'tool-result',
-            toolCallId: 'call_skill',
-            content: [{ type: 'text', text: 'loaded' }],
-          }],
+          toolCallId: 'call_skill',
+          content: [{ type: 'text', text: 'loaded' }],
         },
       ],
     } as unknown as GenerateOptions
