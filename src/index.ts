@@ -59,11 +59,25 @@ export type { AntigravityOAuth, CcaKind, CcaSession } from './types.ts'
 export const name = 'llm-antigravity-oauth'
 export const inject = ['llm']
 
-async function syncAuthenticatedRoute(
+function isDisposedRegistration(error: unknown): boolean {
+  return typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && error.code === 'REGISTRATION_DISPOSED'
+}
+
+export async function syncAuthenticatedRoute(
   session: AntigravitySession,
   registration: AdapterRegistrationHandle,
 ): Promise<void> {
-  registration.replace(await session.hasReadyAccount() ? [HARNESS_ROUTE] : [])
+  try {
+    registration.replace(await session.hasReadyAccount() ? [HARNESS_ROUTE] : [])
+  } catch (error) {
+    // A short command such as `dsh web --help` disposes the fiber before this
+    // async refresh runs. Replacing routes after that is not a load failure.
+    if (isDisposedRegistration(error)) return
+    throw error
+  }
 }
 
 export function apply(ctx: Context, config: Config): void {

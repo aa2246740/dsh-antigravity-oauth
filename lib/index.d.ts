@@ -1,4 +1,4 @@
-import { GenerateOptions, LlmAdapter, LlmModelInfo, LlmProviderInfo, LlmResolvedModelInfo, RetryPolicyConfig, StreamChunk } from "@deepseek-ai/dsh-llm";
+import { AdapterRegistrationHandle, GenerateOptions, LlmAdapter, LlmModelInfo, LlmProviderInfo, LlmResolvedModelInfo, RetryPolicyConfig, StreamChunk } from "@deepseek-ai/dsh-llm";
 import z from "@deepseek-ai/schemastery";
 import { Context } from "@deepseek-ai/cordis";
 import { AttachmentStore } from "@deepseek-ai/dsh-attachment";
@@ -369,6 +369,7 @@ declare module '@deepseek-ai/cordis' {
 }
 declare const name = "llm-antigravity-oauth";
 declare const inject: string[];
+declare function syncAuthenticatedRoute(session: AntigravitySession, registration: AdapterRegistrationHandle): Promise<void>;
 declare function apply(ctx: Context, config: Config): void;
 //#endregion
-export { AUTH_COMPLETE_PATH, AUTH_FILENAME, AUTH_LOGIN_PATH, AUTH_LOGOUT_PATH, AUTH_STATUS_PATH, AntigravityCredentialStore, type AntigravityOAuth, AntigravitySession, BOOT_MARKER, CcaClient, type CcaKind, type CcaSession, Config, type Config as PluginConfig, HARNESS_ROUTE, LOAD_CODE_ASSIST_BODY, SCOPES, SEARCH_ANSWER_GUIDANCE, SEARCH_CONTINUE_GUIDANCE, SEARCH_FOLLOW_UP_LIMIT, THOUGHT_ONLY_CONTINUE, antigravityAuthPath, appendContinueMemo, appendSearchDossier, appendSearchMemo, appendSearchTurns, apply, authorizationUrl, buildCcaBody, createAntigravityAdapter, createCcaSession, inject, name, registerAntigravityAuthRoutes, streamGenerateContentUrl, withoutSearchWeb };
+export { AUTH_COMPLETE_PATH, AUTH_FILENAME, AUTH_LOGIN_PATH, AUTH_LOGOUT_PATH, AUTH_STATUS_PATH, AntigravityCredentialStore, type AntigravityOAuth, AntigravitySession, BOOT_MARKER, CcaClient, type CcaKind, type CcaSession, Config, type Config as PluginConfig, HARNESS_ROUTE, LOAD_CODE_ASSIST_BODY, SCOPES, SEARCH_ANSWER_GUIDANCE, SEARCH_CONTINUE_GUIDANCE, SEARCH_FOLLOW_UP_LIMIT, THOUGHT_ONLY_CONTINUE, antigravityAuthPath, appendContinueMemo, appendSearchDossier, appendSearchMemo, appendSearchTurns, apply, authorizationUrl, buildCcaBody, createAntigravityAdapter, createCcaSession, inject, name, registerAntigravityAuthRoutes, streamGenerateContentUrl, syncAuthenticatedRoute, withoutSearchWeb };
