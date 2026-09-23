@@ -86,16 +86,14 @@ function convertMessages(
   }
   const contents: GeminiContent[] = []
   for (const message of messages) {
-    if (message.source.kind === 'tool') {
-      const block = message.content[0]
-      if (block?.type !== 'tool-result') continue
-      const responseText = textOf(block.content)
+    if (message.role === 'tool') {
+      const responseText = textOf(message.content)
       contents.push({
         role: 'user',
         parts: [{
           functionResponse: {
-            name: toolNames.get(block.toolCallId) ?? 'tool',
-            id: block.toolCallId,
+            name: toolNames.get(message.toolCallId) ?? 'tool',
+            id: message.toolCallId,
             response: { result: responseText },
           },
         }],

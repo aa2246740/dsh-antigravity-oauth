@@ -8,7 +8,7 @@ dsh plugin --profile web add github:aa2246740/dsh-antigravity-oauth
 
 You need official `dsh` (or `npx @deepseek-ai/dsh`) and **pnpm** on `PATH`. `dsh plugin add` runs pnpm in `$DSH_HOME/profiles/web` and, because this package declares `dsh.bundle.patch`, appends the bundle to that profile. Then **restart that Host and reload the page**. The command writes the profile. It does not hot-load a running process.
 
-`lib/` is committed, so a git install does not need a local build, `prepare`, or `allowBuilds`. DeepSeek Harness **0.1.5-rc.3**. Node **22.19+**.
+`lib/` is committed, so a git install does not need a local build, `prepare`, or `allowBuilds`. DeepSeek Harness **0.1.7-rc.1**. Node **22.19+**.
 
 If `dsh` is not on PATH:
 
