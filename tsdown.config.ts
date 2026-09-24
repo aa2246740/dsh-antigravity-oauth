@@ -1,10 +1,19 @@
 import { defineConfig } from 'tsdown'
-import { resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { existsSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { pathToFileURL, fileURLToPath } from 'node:url'
 
+const vendored = fileURLToPath(new URL('./tools/client-build.js', import.meta.url))
 const harness = process.env.DSHX_HARNESS
-if (!harness) throw new Error('Set DSHX_HARNESS to the checkout used for this build.')
-const { externalClientBundle } = await import(pathToFileURL(resolve(harness, 'tools/dshx/src/client-build.js')).href)
+const adapter = existsSync(vendored)
+  ? vendored
+  : harness
+    ? join(resolve(harness), 'tools/dshx/src/client-build.js')
+    : undefined
+if (!adapter || !existsSync(adapter)) {
+  throw new Error('Set DSHX_HARNESS to the checkout used for this build, or keep tools/client-build.js.')
+}
+const { externalClientBundle } = await import(pathToFileURL(adapter).href)
 const client = externalClientBundle('dsh-antigravity-oauth', [], { clientEntry: 'src/client/index.tsx' })[1]
 
 const nodeExternal = [
