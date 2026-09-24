@@ -188,6 +188,8 @@ export class AntigravityAdapter extends LlmAdapter {
   override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
     const spec = publicModel(model)
     const name = spec?.name ?? model
+    // Omit toolUpdate. On 0.1.7-rc.2 that means every request still carries the
+    // complete current tool list, which this adapter forwards as declarations.
     return Promise.resolve({
       provider,
       id: model,
