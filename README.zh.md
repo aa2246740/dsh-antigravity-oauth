@@ -2,23 +2,37 @@
 
 [English](README.md) | 中文
 
-```sh
-dsh plugin --profile web add github:aa2246740/dsh-antigravity-oauth
+## 安装
+
+### DSH Studio 桌面 App（推荐）
+
+打开 **设置 → 插件 → 添加插件**，在“包名或地址”中输入：
+
+```text
+github:aa2246740/dsh-antigravity-oauth#v0.2.2
 ```
 
-PATH 上需要官方 `dsh`（或 `npx @deepseek-ai/dsh`）和 **pnpm**。`dsh plugin add` 会在 `$DSH_HOME/profiles/web` 里跑 pnpm，并因为本包装了 `dsh.bundle.patch` 而写入 profile bundles。然后**重启这个 Host，再刷新页面**。它只写 profile，不会热挂正在跑的进程。
+桌面端插件管理器负责 Desktop profile 和内置包管理器。本发布包含 `lib/`；普通使用不需要 clone、构建或安装 DSHX。若应用提示刷新或重新打开，请按提示完成。
 
-仓库已提交 `lib/`，git 安装不用再构建，也不走 `prepare` / `allowBuilds`。需要 DeepSeek Harness **0.1.7-rc.2**（客户端 peer 为 `>=0.1.7-rc.1 <0.1.8`），Node **22.19+**。
+### Web CLI
+
+```sh
+dsh plugin --profile web add github:aa2246740/dsh-antigravity-oauth#v0.2.2
+```
+
+这条官方 CLI 命令只写入 `web` profile，不能修改 Desktop App 的 profile。对于已经运行的 Web Host，请重新打开该 Host 一次，再刷新网页。
+
+需要 DeepSeek Harness **0.1.7-rc.2**（客户端 peer 为 `>=0.1.7-rc.1 <0.1.8`），Node **22.19+**。
 
 `dsh` 不在 PATH 时：
 
 ```sh
-npx @deepseek-ai/dsh plugin --profile web add github:aa2246740/dsh-antigravity-oauth
+npx @deepseek-ai/dsh plugin --profile web add github:aa2246740/dsh-antigravity-oauth#v0.2.2
 ```
 
-DSH.app 的 `desktop` profile 不接受 `github:`。用 `dsh web` 装进 web profile。
+官方 CLI 只管理 `web` profile；Desktop App 请使用上面的应用内“添加插件”入口。
 
-本地 clone 请保留 `file:` 前缀，否则 Host 的 peer 依赖经常解析不到：
+本地 clone（开发/本地测试）请保留 `file:` 前缀，否则 Host 的 peer 依赖经常解析不到：
 
 ```sh
 git clone https://github.com/aa2246740/dsh-antigravity-oauth.git

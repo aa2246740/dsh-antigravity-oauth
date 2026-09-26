@@ -2,23 +2,37 @@
 
 English | [中文](README.zh.md)
 
-```sh
-dsh plugin --profile web add github:aa2246740/dsh-antigravity-oauth
+## Install
+
+### DSH Studio desktop app (recommended)
+
+Open **Settings → Plugins → Add plugin** and enter this in “Package name or address”:
+
+```text
+github:aa2246740/dsh-antigravity-oauth#v0.2.2
 ```
 
-You need official `dsh` (or `npx @deepseek-ai/dsh`) and **pnpm** on `PATH`. `dsh plugin add` runs pnpm in `$DSH_HOME/profiles/web` and, because this package declares `dsh.bundle.patch`, appends the bundle to that profile. Then **restart that Host and reload the page**. The command writes the profile. It does not hot-load a running process.
+The desktop plugin manager owns the Desktop profile and bundled package manager. This release includes `lib/`; normal use needs no clone, build, or DSHX installation. Follow the app if it asks you to reload or reopen after installation.
 
-`lib/` is committed, so a git install does not need a local build, `prepare`, or `allowBuilds`. DeepSeek Harness **0.1.7-rc.2** (client peers `>=0.1.7-rc.1 <0.1.8`). Node **22.19+**.
+### Web CLI
+
+```sh
+dsh plugin --profile web add github:aa2246740/dsh-antigravity-oauth#v0.2.2
+```
+
+This official CLI command writes only the `web` profile; it cannot modify the Desktop App profile. For an already-running Web Host, reopen that Host once and reload the page.
+
+DeepSeek Harness **0.1.7-rc.2** (client peers `>=0.1.7-rc.1 <0.1.8`). Node **22.19+**.
 
 If `dsh` is not on PATH:
 
 ```sh
-npx @deepseek-ai/dsh plugin --profile web add github:aa2246740/dsh-antigravity-oauth
+npx @deepseek-ai/dsh plugin --profile web add github:aa2246740/dsh-antigravity-oauth#v0.2.2
 ```
 
-DSH.app's `desktop` profile rejects `github:`. Use `dsh web` and install into the `web` profile.
+The public CLI manages `web` only; use the in-app “Add plugin” entry above for the Desktop App.
 
-From a local clone, keep the `file:` prefix so Host peers resolve:
+From a local clone (development/local testing), keep the `file:` prefix so Host peers resolve:
 
 ```sh
 git clone https://github.com/aa2246740/dsh-antigravity-oauth.git
