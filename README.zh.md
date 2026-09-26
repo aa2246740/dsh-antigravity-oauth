@@ -8,7 +8,7 @@ dsh plugin --profile web add github:aa2246740/dsh-antigravity-oauth
 
 PATH 上需要官方 `dsh`（或 `npx @deepseek-ai/dsh`）和 **pnpm**。`dsh plugin add` 会在 `$DSH_HOME/profiles/web` 里跑 pnpm，并因为本包装了 `dsh.bundle.patch` 而写入 profile bundles。然后**重启这个 Host，再刷新页面**。它只写 profile，不会热挂正在跑的进程。
 
-仓库已提交 `lib/`，git 安装不用再构建，也不走 `prepare` / `allowBuilds`。需要 DeepSeek Harness **0.1.7-rc.1**，Node **22.19+**。
+仓库已提交 `lib/`，git 安装不用再构建，也不走 `prepare` / `allowBuilds`。需要 DeepSeek Harness **0.1.7-rc.2**（客户端 peer 为 `>=0.1.7-rc.1 <0.1.8`），Node **22.19+**。
 
 `dsh` 不在 PATH 时：
 

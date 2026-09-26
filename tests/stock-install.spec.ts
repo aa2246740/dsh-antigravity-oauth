@@ -38,8 +38,10 @@ describe('stock dsh plugin add', () => {
     ]) {
       expect(peers[name]).toBe('>=0.1.7-rc.1 <0.1.8')
     }
-    expect(readme).toContain('0.1.7-rc.1')
-    expect(readmeZh).toContain('0.1.7-rc.1')
+    expect(readme).toContain('0.1.7-rc.2')
+    expect(readmeZh).toContain('0.1.7-rc.2')
+    expect(readme).toContain('>=0.1.7-rc.1 <0.1.8')
+    expect(readmeZh).toContain('>=0.1.7-rc.1 <0.1.8')
     expect(readme).not.toContain('0.1.7-alpha')
     expect(readmeZh).not.toContain('0.1.7-alpha')
   })

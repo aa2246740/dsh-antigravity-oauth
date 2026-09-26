@@ -408,3 +408,16 @@ describe('AntigravityAdapter search', () => {
     expect(limited).toEqual(['acc_one'])
   })
 })
+
+describe('AntigravityAdapter model catalog', () => {
+  it('omits toolUpdate so 0.1.7-rc.2 sends the complete tool list', async () => {
+    const fake = fakeSession({})
+    const adapter = createAntigravityAdapter(fake.session, {
+      nativeTools: true,
+      nativeSearch: true,
+    })
+    const resolved = await adapter.resolveModel('agy-google-antigravity', 'gemini-3.7-flash')
+    expect(resolved.toolUpdate).toBeUndefined()
+    expect(resolved.id).toBe('gemini-3.7-flash')
+  })
+})
