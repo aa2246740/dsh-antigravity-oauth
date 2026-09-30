@@ -105,6 +105,29 @@ export type AccountSummary = {
   dead: boolean
 }
 
+export type QuotaBucket = {
+  bucketId: string
+  displayName?: string
+  window: string
+  remainingFraction: number
+  resetTime?: string
+  description?: string
+}
+
+export type QuotaGroup = {
+  displayName: string
+  description?: string
+  buckets: QuotaBucket[]
+}
+
+export type AccountQuotaSummary = {
+  accountId: string
+  email?: string
+  ok: boolean
+  error?: string
+  groups?: QuotaGroup[]
+}
+
 export type AntigravityStatus =
   | { status: 'signed-out', accounts: [] }
   | { status: 'signing-in', url?: string, accounts: AccountSummary[] }
