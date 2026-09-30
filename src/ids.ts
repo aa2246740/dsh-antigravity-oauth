@@ -12,6 +12,8 @@ export const AUTH_COMPLETE_PATH = '/plugins/dsh-antigravity-oauth/auth/complete'
 export const AUTH_LOGOUT_PATH = '/plugins/dsh-antigravity-oauth/auth/logout'
 export const ACCOUNT_SWITCH_PATH = '/plugins/dsh-antigravity-oauth/auth/accounts/switch'
 export const ACCOUNT_REMOVE_PATH = '/plugins/dsh-antigravity-oauth/auth/accounts/remove'
+export const ACCOUNT_QUOTAS_PATH = '/plugins/dsh-antigravity-oauth/auth/accounts/quotas'
+export const QUOTA_SUMMARY_PATH = '/v1internal:retrieveUserQuotaSummary'
 
 export const DAILY_ENDPOINT = 'https://daily-cloudcode-pa.googleapis.com'
 export const SANDBOX_ENDPOINT = 'https://daily-cloudcode-pa.sandbox.googleapis.com'
