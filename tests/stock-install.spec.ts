@@ -39,7 +39,7 @@ describe('stock dsh plugin add', () => {
     ]) {
       expect(peers[name]).toBe('>=0.2.0-rc.1 <0.2.1')
     }
-    expect(pkg.version).toBe('0.2.3')
+    expect(pkg.version).toBe('0.2.4')
     expect(readme).toContain('0.2.0-rc.2')
     expect(readmeZh).toContain('0.2.0-rc.2')
     expect(readme).toContain('>=0.2.0-rc.1 <0.2.1')
