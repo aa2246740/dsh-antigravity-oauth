@@ -135,5 +135,13 @@
     "tsdown": "^0.22.2",
     "typescript": "^5.9.3",
     "vitest": "^4.1.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aa2246740/dsh-antigravity-oauth.git"
+  },
+  "homepage": "https://github.com/aa2246740/dsh-antigravity-oauth#readme",
+  "bugs": {
+    "url": "https://github.com/aa2246740/dsh-antigravity-oauth/issues"
   }
 }
