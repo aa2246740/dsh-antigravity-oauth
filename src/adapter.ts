@@ -139,7 +139,19 @@ function functionsFor(
   return ccaFunctionDeclarations(options.tools, nativeSearch)
 }
 
-function mergeUsage(base: TokenUsage | undefined, extra: CcaUsage | undefined): TokenUsage | undefined {
+function mergeUsageSnapshot(base: CcaUsage | undefined, extra: CcaUsage | undefined): CcaUsage | undefined {
+  if (extra === undefined) return base
+  const reasoningTokens = Math.max(base?.reasoningTokens ?? 0, extra.reasoningTokens ?? 0)
+  const cacheReadTokens = extra.cacheReadTokens ?? base?.cacheReadTokens
+  return {
+    inputTokens: Math.max(base?.inputTokens ?? 0, extra.inputTokens),
+    outputTokens: Math.max(base?.outputTokens ?? 0, extra.outputTokens),
+    ...reasoningTokens > 0 ? { reasoningTokens } : {},
+    ...cacheReadTokens === undefined ? {} : { cacheReadTokens },
+  }
+}
+
+function addRequestUsage(base: TokenUsage | undefined, extra: CcaUsage | undefined): TokenUsage | undefined {
   if (extra === undefined) return base
   const reasoningTokens = (base?.reasoningTokens ?? 0) + (extra.reasoningTokens ?? 0)
   const cacheReadTokens = extra.cacheReadTokens ?? base?.cacheReadTokens
@@ -306,10 +318,11 @@ export class AntigravityAdapter extends LlmAdapter {
   ): AsyncIterable<StreamChunk> {
     const pendingSearches: SearchTurnCall[] = []
     const attachments = this.options.resolveAttachments?.()
+    let requestUsage: CcaUsage | undefined
     for await (const event of lease.cca.chat(lease.oauth, input, options.signal)) {
       if (watchdog.aborted) throw new LlmError('Antigravity stream idle timeout', 'TIMEOUT')
       if (event.type === 'usage') {
-        state.usage = mergeUsage(state.usage, event.usage)
+        requestUsage = mergeUsageSnapshot(requestUsage, event.usage)
         continue
       }
       if (event.type === 'thought') {
@@ -373,6 +386,7 @@ export class AntigravityAdapter extends LlmAdapter {
       }
       if (event.type === 'finish') state.finish = event.reason
     }
+    state.usage = addRequestUsage(state.usage, requestUsage)
 
     const skipFollowUp = options.purpose === 'compaction' || options.purpose === 'session-title'
     const allowMoreSearch = !state.answerPass
@@ -396,12 +410,12 @@ export class AntigravityAdapter extends LlmAdapter {
         for (const call of pendingSearches) {
           const query = parseSearchWebArgs(call.args)
           const collected = await this.collectSearch(options, query, watchdog, lease)
-          state.usage = mergeUsage(state.usage, collected.usage)
+          state.usage = addRequestUsage(state.usage, collected.usage)
           state.searchRounds.push({ query, result: collected.text })
         }
       } else if (memoQuery !== undefined) {
         const collected = await this.collectSearch(options, memoQuery, watchdog, lease)
-        state.usage = mergeUsage(state.usage, collected.usage)
+        state.usage = addRequestUsage(state.usage, collected.usage)
         state.searchRounds.push({ query: memoQuery, result: collected.text })
       }
       const last = state.searchRounds.at(-1)
@@ -470,7 +484,7 @@ export class AntigravityAdapter extends LlmAdapter {
     }, options.signal)) {
       if (watchdog.aborted) throw new LlmError('Antigravity stream idle timeout', 'TIMEOUT')
       if (event.type === 'text') text += event.text
-      if (event.type === 'usage') usage = event.usage
+      if (event.type === 'usage') usage = mergeUsageSnapshot(usage, event.usage)
     }
     const trimmed = text.trim()
     return { text: trimmed.length > 0 ? trimmed : '(no search results)', usage }

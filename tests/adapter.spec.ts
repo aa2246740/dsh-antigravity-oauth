@@ -404,8 +404,146 @@ describe('AntigravityAdapter search', () => {
       nativeTools: true,
       nativeSearch: true,
     })
-    await expect(collect(adapter.stream(options('hi')))).rejects.toThrow(/a@example\.test/)
+    await expect(collect(adapter.stream(options('hi')))).rejects.toThrow(/a@example\.test.*Settings → Antigravity/)
     expect(limited).toEqual(['acc_one'])
+  })
+})
+
+describe('AntigravityAdapter usage', () => {
+  it('counts cumulative snapshots once within a single chat request', async () => {
+    const fake = fakeSession({
+      chat: [
+        { type: 'usage', usage: { inputTokens: 80_000, outputTokens: 10, reasoningTokens: 1, cacheReadTokens: 40_000 } },
+        { type: 'text', text: 'answer' },
+        { type: 'usage', usage: { inputTokens: 80_000, outputTokens: 20, reasoningTokens: 2, cacheReadTokens: 40_000 } },
+        { type: 'usage', usage: { inputTokens: 80_000, outputTokens: 20, reasoningTokens: 2, cacheReadTokens: 40_000 } },
+        { type: 'finish', reason: 'STOP' },
+      ],
+    })
+    const adapter = createAntigravityAdapter(fake.session, { nativeTools: true, nativeSearch: true })
+    const chunks = await collect(adapter.stream(options('hi')))
+    expect(chunks.filter(chunk => chunk.type === 'usage')).toEqual([{
+      type: 'usage',
+      usage: { inputTokens: 80_000, outputTokens: 20, reasoningTokens: 2, cacheReadTokens: 40_000 },
+    }])
+    expect(fake.chatBodies).toHaveLength(1)
+    expect(visibleText(chunks)).toBe('answer')
+  })
+
+  it('preserves earlier counters when a later chat snapshot omits them', async () => {
+    const fake = fakeSession({
+      chat: [
+        { type: 'usage', usage: { inputTokens: 80_000, outputTokens: 20, reasoningTokens: 8, cacheReadTokens: 40_000 } },
+        { type: 'usage', usage: { inputTokens: 0, outputTokens: 30 } },
+        { type: 'text', text: 'answer' },
+        { type: 'finish', reason: 'STOP' },
+      ],
+    })
+    const adapter = createAntigravityAdapter(fake.session, { nativeTools: true, nativeSearch: true })
+    const chunks = await collect(adapter.stream(options('hi')))
+    expect(chunks.find(chunk => chunk.type === 'usage')).toEqual({
+      type: 'usage',
+      usage: { inputTokens: 80_000, outputTokens: 30, reasoningTokens: 8, cacheReadTokens: 40_000 },
+    })
+  })
+
+  it('adds independent chat, search, and answer requests after deduplicating their snapshots', async () => {
+    const fake = fakeSession({
+      chat: [
+        [
+          { type: 'usage', usage: { inputTokens: 1000, outputTokens: 5, reasoningTokens: 1 } },
+          { type: 'functionCall', name: 'search_web', args: { query: 'vendor docs' } },
+          { type: 'usage', usage: { inputTokens: 1000, outputTokens: 10, reasoningTokens: 2 } },
+          { type: 'finish', reason: 'STOP' },
+        ],
+        [
+          { type: 'usage', usage: { inputTokens: 1200, outputTokens: 10, reasoningTokens: 1 } },
+          { type: 'text', text: 'answer' },
+          { type: 'usage', usage: { inputTokens: 1200, outputTokens: 20, reasoningTokens: 3 } },
+          { type: 'finish', reason: 'STOP' },
+        ],
+      ],
+      search: [
+        { type: 'usage', usage: { inputTokens: 200, outputTokens: 15, reasoningTokens: 2 } },
+        { type: 'text', text: 'grounded news' },
+        { type: 'usage', usage: { inputTokens: 200, outputTokens: 30, reasoningTokens: 4 } },
+        { type: 'finish', reason: 'STOP' },
+      ],
+    })
+    const adapter = createAntigravityAdapter(fake.session, { nativeTools: true, nativeSearch: true })
+    const chunks = await collect(adapter.stream(options('hi')))
+    expect(chunks.find(chunk => chunk.type === 'usage')).toEqual({
+      type: 'usage',
+      usage: { inputTokens: 2400, outputTokens: 60, reasoningTokens: 9 },
+    })
+    expect(fake.chatBodies).toHaveLength(2)
+    expect(fake.searchQueries).toEqual(['vendor docs'])
+    expect(functionResponses(fake.chatBodies[1])).toEqual([{ name: 'search_web', result: 'grounded news' }])
+    expect(visibleText(chunks)).toBe('answer')
+    expect(chunks.at(-1)).toEqual({ type: 'finish', reason: { kind: 'stop' } })
+  })
+
+  it('adds reasoning usage across thought-only continuation requests', async () => {
+    const fake = fakeSession({
+      chat: [
+        [
+          { type: 'thought', text: 'Hmm.' },
+          { type: 'usage', usage: { inputTokens: 1000, outputTokens: 0, reasoningTokens: 10 } },
+          { type: 'finish', reason: 'STOP' },
+        ],
+        [
+          { type: 'text', text: 'answer' },
+          { type: 'usage', usage: { inputTokens: 1100, outputTokens: 20, reasoningTokens: 3 } },
+          { type: 'finish', reason: 'STOP' },
+        ],
+      ],
+    })
+    const adapter = createAntigravityAdapter(fake.session, { nativeTools: true, nativeSearch: true })
+    const chunks = await collect(adapter.stream(options('hi')))
+    expect(chunks.find(chunk => chunk.type === 'usage')).toEqual({
+      type: 'usage',
+      usage: { inputTokens: 2100, outputTokens: 20, reasoningTokens: 13 },
+    })
+    expect(fake.chatBodies).toHaveLength(2)
+    expect(fake.searchQueries).toEqual([])
+    expect(visibleText(chunks)).toBe('answer')
+  })
+
+  it('preserves earlier search counters when its final snapshot omits them', async () => {
+    const fake = fakeSession({
+      chat: [
+        [
+          { type: 'functionCall', name: 'search_web', args: { query: 'vendor docs' } },
+          { type: 'usage', usage: { inputTokens: 1000, outputTokens: 10, reasoningTokens: 2 } },
+          { type: 'finish', reason: 'STOP' },
+        ],
+        [
+          { type: 'text', text: 'answer' },
+          { type: 'usage', usage: { inputTokens: 1200, outputTokens: 20, reasoningTokens: 3 } },
+          { type: 'finish', reason: 'STOP' },
+        ],
+      ],
+      search: [
+        { type: 'usage', usage: { inputTokens: 200, outputTokens: 30, reasoningTokens: 4 } },
+        { type: 'text', text: 'grounded news' },
+        { type: 'usage', usage: { inputTokens: 0, outputTokens: 40 } },
+        { type: 'finish', reason: 'STOP' },
+      ],
+    })
+    const adapter = createAntigravityAdapter(fake.session, { nativeTools: true, nativeSearch: true })
+    const chunks = await collect(adapter.stream(options('hi')))
+    expect(chunks.find(chunk => chunk.type === 'usage')).toEqual({
+      type: 'usage',
+      usage: { inputTokens: 2400, outputTokens: 70, reasoningTokens: 9 },
+    })
+  })
+
+  it('omits usage when no request reports it', async () => {
+    const fake = fakeSession({ chat: [{ type: 'text', text: 'answer' }, { type: 'finish', reason: 'STOP' }] })
+    const adapter = createAntigravityAdapter(fake.session, { nativeTools: true, nativeSearch: true })
+    const chunks = await collect(adapter.stream(options('hi')))
+    expect(chunks.some(chunk => chunk.type === 'usage')).toBe(false)
+    expect(visibleText(chunks)).toBe('answer')
   })
 })
 
