@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AntigravityKey } from './locales.ts'
-import type { AntigravityStatus } from '../types.ts'
+import type { AccountQuotaSummary, AntigravityStatus } from '../types.ts'
 
 const STATUS_PATH = '/plugins/dsh-antigravity-oauth/auth/status'
 const LOGIN_PATH = '/plugins/dsh-antigravity-oauth/auth/login'
@@ -8,6 +8,7 @@ const COMPLETE_PATH = '/plugins/dsh-antigravity-oauth/auth/complete'
 const LOGOUT_PATH = '/plugins/dsh-antigravity-oauth/auth/logout'
 const SWITCH_PATH = '/plugins/dsh-antigravity-oauth/auth/accounts/switch'
 const REMOVE_PATH = '/plugins/dsh-antigravity-oauth/auth/accounts/remove'
+const QUOTAS_PATH = '/plugins/dsh-antigravity-oauth/auth/accounts/quotas'
 const POLL_INTERVAL_MS = 1_000
 const STYLE_ID = 'dsh-antigravity-oauth-settings-theme'
 
@@ -79,7 +80,36 @@ const SETTINGS_CSS = `
   color:var(--dsw-alias-state-error-primary, #d92d20);
 }
 .dsh-agy-remove { margin-left:auto; }
+.dsh-agy-quota-box {
+  width:100%; display:flex; flex-direction:column; gap:6px;
+  padding:8px 10px; margin-top:4px; border-radius:6px;
+  background:var(--dsw-alias-bg-page-primary, rgba(0,0,0,0.03));
+  border:1px dashed var(--dsw-alias-border-l2);
+}
+.dsh-agy-quota-grid { display:flex; flex-wrap:wrap; gap:14px; align-items:center; }
+.dsh-agy-quota-item { display:inline-flex; align-items:center; gap:6px; font-size:12px; }
+.dsh-agy-quota-bar {
+  width:64px; height:6px; border-radius:3px;
+  background:var(--dsw-alias-border-l2, #e5e7eb); overflow:hidden;
+}
+.dsh-agy-quota-fill { height:100%; border-radius:3px; }
+.dsh-agy-quota-fill.is-high { background:var(--dsw-alias-state-success-primary, #22a06b); }
+.dsh-agy-quota-fill.is-med { background:#f59e0b; }
+.dsh-agy-quota-fill.is-low { background:var(--dsw-alias-state-error-primary, #d92d20); }
 `
+
+function formatReset(iso?: string): string {
+  if (!iso) return ''
+  const t = new Date(iso).getTime() - Date.now()
+  if (t <= 0) return ''
+  const h = Math.floor(t / 3600000)
+  const m = Math.floor((t % 3600000) / 60000)
+  if (h >= 24) {
+    const d = Math.floor(h / 24)
+    return `${d}d`
+  }
+  return `${h}h${m}m`
+}
 
 function ensureThemeStyles(): void {
   if (typeof document === 'undefined') return
@@ -115,8 +145,22 @@ export function AntigravitySettings({ t }: AntigravitySettingsProps) {
   const [draft, setDraft] = useState('')
   const [network, setNetwork] = useState<Network>()
   const [networkMessage, setNetworkMessage] = useState('')
+  const [quotas, setQuotas] = useState<Record<string, AccountQuotaSummary>>({})
+  const [loadingQuotas, setLoadingQuotas] = useState(false)
 
   useEffect(() => { ensureThemeStyles() }, [])
+
+  const refreshQuotas = useCallback(async () => {
+    setLoadingQuotas(true)
+    try {
+      const res = await jsonRequest<{ ok: boolean, quotas: Record<string, AccountQuotaSummary> }>(QUOTAS_PATH)
+      if (res?.quotas) setQuotas(res.quotas)
+    } catch {
+      /* ignore quota fetch errors */
+    } finally {
+      setLoadingQuotas(false)
+    }
+  }, [])
 
   const refresh = useCallback(async () => {
     try {
@@ -128,6 +172,9 @@ export function AntigravitySettings({ t }: AntigravitySettingsProps) {
   }, [t])
 
   useEffect(() => { void refresh() }, [refresh])
+  useEffect(() => {
+    void refreshQuotas()
+  }, [refreshQuotas])
   useEffect(() => {
     void jsonRequest<Network>(NETWORK_PATH).then(setNetwork).catch(err => setError(String(err)))
   }, [])
@@ -274,7 +321,20 @@ export function AntigravitySettings({ t }: AntigravitySettingsProps) {
       </div>}
       <article className="dsh-agy-card">
         <div className="dsh-agy-row">
-          <p className="dsh-agy-name">{t('accounts')}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <p className="dsh-agy-name">{t('accounts')}</p>
+            {accounts.length > 0 ? (
+              <button
+                type="button"
+                className="dsh-agy-btn dsh-agy-btn-secondary"
+                style={{ padding: '2px 8px', fontSize: '11px', minHeight: '22px' }}
+                disabled={busy || loadingQuotas}
+                onClick={() => { void refreshQuotas() }}
+              >
+                {loadingQuotas ? t('working') : t('refreshQuotas')}
+              </button>
+            ) : null}
+          </div>
           {signing ? (
             <button type="button" className="dsh-agy-btn dsh-agy-btn-secondary" onClick={() => { void recover('cancel') }}>{t('cancel')}</button>
           ) : (
@@ -321,6 +381,31 @@ export function AntigravitySettings({ t }: AntigravitySettingsProps) {
                   void (account.id === activeId ? signOutActive() : removeAccount(account.id))
                 }}
               >{t('removeAccount')}</button>
+              {quotas[account.id]?.ok && quotas[account.id]?.groups ? (
+                <div className="dsh-agy-quota-box">
+                  <div className="dsh-agy-quota-grid">
+                    {quotas[account.id].groups!
+                      .flatMap(g => g.buckets)
+                      .filter(b => b.window === '5h' || b.window === 'weekly')
+                      .map(b => {
+                        const pct = Math.round(b.remainingFraction * 100)
+                        const fillClass = pct >= 50 ? 'is-high' : pct >= 20 ? 'is-med' : 'is-low'
+                        const label = b.window === '5h' ? t('quota5h') : t('quotaWeekly')
+                        const reset = formatReset(b.resetTime)
+                        return (
+                          <div key={b.bucketId} className="dsh-agy-quota-item" title={b.description || `${label}: ${pct}%`}>
+                            <span>{label}</span>
+                            <div className="dsh-agy-quota-bar">
+                              <div className={`dsh-agy-quota-fill ${fillClass}`} style={{ width: `${pct}%` }} />
+                            </div>
+                            <span style={{ fontWeight: 600 }}>{pct}%</span>
+                            {reset ? <span style={{ opacity: 0.65 }}>({reset})</span> : null}
+                          </div>
+                        )
+                      })}
+                  </div>
+                </div>
+              ) : null}
             </div>
           )
         })}

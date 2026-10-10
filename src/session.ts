@@ -4,9 +4,11 @@ import {
   CALLBACK_PATH,
   CALLBACK_PORT,
   CALLBACK_URI,
+  CCA_ENDPOINTS,
   OAUTH_REFRESH_COOLDOWN_MS,
   OAUTH_REFRESH_SOON_MS,
   PRECHECK_INTERVAL_MS,
+  QUOTA_SUMMARY_PATH,
   RATE_LIMIT_COOLDOWN_MAX_MS,
   RATE_LIMIT_COOLDOWN_MS,
 } from './ids.ts'
@@ -23,15 +25,17 @@ import {
 import { isSafeAuthUrl, safeMessage } from './redact.ts'
 import type { AntigravityCredentialStore } from './store.ts'
 import type {
+  AccountQuotaSummary,
   AccountSummary,
   AntigravityGrant,
   AntigravityLease,
   AntigravityOAuth,
   AntigravityStatus,
   EligibilitySummary,
+  QuotaGroup,
 } from './types.ts'
 import { AntigravityNetwork } from './network.ts'
-import { ensureAntigravityVersion } from './user-agent.ts'
+import { antigravityUserAgent, ensureAntigravityVersion } from './user-agent.ts'
 
 export type FetchImpl = typeof fetch
 
@@ -505,5 +509,65 @@ export class AntigravitySession {
     await new Promise<void>(resolve => {
       server.close(() => resolve())
     })
+  }
+
+  async retrieveAllQuotas(): Promise<Record<string, AccountQuotaSummary>> {
+    const accounts = await this.store.list()
+    const result: Record<string, AccountQuotaSummary> = {}
+    await Promise.all(accounts.map(async account => {
+      try {
+        let access = account.access
+        if (account.expires <= Date.now() + 60_000) {
+          const refreshed = await refreshAccessToken(account.refresh, this.fetchImpl)
+          await this.store.update(account.id, {
+            access: refreshed.access,
+            expires: refreshed.expires,
+          })
+          access = refreshed.access
+        }
+        const body = JSON.stringify({ project: account.projectId || 'aicode-consumers' })
+        let data: unknown
+        for (const endpoint of CCA_ENDPOINTS) {
+          try {
+            const resp = await this.fetchImpl(`${endpoint}${QUOTA_SUMMARY_PATH}`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${access}`,
+                'Content-Type': 'application/json',
+                'User-Agent': antigravityUserAgent(),
+              },
+              body,
+            })
+            if (resp.ok) {
+              data = await resp.json()
+              break
+            }
+          } catch {
+            /* try next endpoint */
+          }
+        }
+        if (data && typeof data === 'object' && 'groups' in data && Array.isArray((data as { groups: unknown }).groups)) {
+          const rawGroups = (data as { groups: unknown[] }).groups
+          const groups: QuotaGroup[] = rawGroups.map((g: any) => ({
+            displayName: typeof g.displayName === 'string' ? g.displayName : '',
+            description: typeof g.description === 'string' ? g.description : undefined,
+            buckets: Array.isArray(g.buckets) ? g.buckets.map((b: any) => ({
+              bucketId: String(b.bucketId ?? ''),
+              displayName: typeof b.displayName === 'string' ? b.displayName : undefined,
+              window: String(b.window ?? ''),
+              remainingFraction: typeof b.remainingFraction === 'number' ? b.remainingFraction : 1,
+              resetTime: typeof b.resetTime === 'string' ? b.resetTime : undefined,
+              description: typeof b.description === 'string' ? b.description : undefined,
+            })) : [],
+          }))
+          result[account.id] = { accountId: account.id, email: account.email, ok: true, groups }
+        } else {
+          result[account.id] = { accountId: account.id, email: account.email, ok: false, error: 'Quota response invalid' }
+        }
+      } catch (err: unknown) {
+        result[account.id] = { accountId: account.id, email: account.email, ok: false, error: safeMessage(err) }
+      }
+    }))
+    return result
   }
 }

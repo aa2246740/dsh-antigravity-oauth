@@ -38,6 +38,12 @@ export const en = {
   accountNeedsRelogin: 'Re-login required',
   accountNeedsEligibility: 'Eligibility pending',
   unknownAccount: 'Unknown account',
+  quotas: 'Quotas',
+  refreshQuotas: 'Refresh quotas',
+  quota5h: '5h limit',
+  quotaWeekly: 'Weekly limit',
+  quotaResetsIn: 'Resets in',
+  quotaUnavailable: 'Quota unavailable',
 } as const
 
 export type AntigravityKey = keyof typeof en
@@ -82,4 +88,10 @@ export const zh: { [Key in AntigravityKey]: string } = {
   accountNeedsRelogin: '需要重新登录',
   accountNeedsEligibility: '资格待确认',
   unknownAccount: '未知账号',
+  quotas: '配额',
+  refreshQuotas: '刷新配额',
+  quota5h: '5小时滚动',
+  quotaWeekly: '每周总额度',
+  quotaResetsIn: '重置于',
+  quotaUnavailable: '配额不可用',
 }

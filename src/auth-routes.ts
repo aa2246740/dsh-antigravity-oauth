@@ -1,7 +1,15 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
-import { ACCOUNT_REMOVE_PATH, ACCOUNT_SWITCH_PATH, AUTH_COMPLETE_PATH, AUTH_LOGIN_PATH, AUTH_LOGOUT_PATH, AUTH_STATUS_PATH } from './ids.ts'
+import {
+  ACCOUNT_QUOTAS_PATH,
+  ACCOUNT_REMOVE_PATH,
+  ACCOUNT_SWITCH_PATH,
+  AUTH_COMPLETE_PATH,
+  AUTH_LOGIN_PATH,
+  AUTH_LOGOUT_PATH,
+  AUTH_STATUS_PATH,
+} from './ids.ts'
 import { isSafeAuthUrl, safeMessage } from './redact.ts'
 import type { AntigravitySession } from './session.ts'
 import { NETWORK_PATH } from './network.ts'
@@ -168,6 +176,20 @@ export function registerAntigravityAuthRoutes(
             await notify()
             json(res, 200, { ok: true, account: await session.snapshot() })
           } catch (error) { json(res, 400, { error: safeMessage(error) }) }
+        },
+      }),
+      ctx.webServer.register({
+        kind: 'exact',
+        path: ACCOUNT_QUOTAS_PATH,
+        handler: async (req, res) => {
+          if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' })
+          if (!trustedRequest(req)) return json(res, 403, { error: 'forbidden' })
+          try {
+            const quotas = await session.retrieveAllQuotas()
+            json(res, 200, { ok: true, quotas })
+          } catch (error: unknown) {
+            json(res, 500, { error: safeMessage(error) })
+          }
         },
       }),
       ctx.webServer.register({
