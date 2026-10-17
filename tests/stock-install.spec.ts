@@ -37,17 +37,19 @@ describe('stock dsh plugin add', () => {
       '@deepseek-ai/dsh-client-ui-settings',
       '@deepseek-ai/dsh-client-ui-slots',
     ]) {
-      expect(peers[name]).toBe('>=0.2.0-rc.1 <0.2.1')
+      expect(peers[name]).toBe('>=0.2.1-rc.1 <0.2.2')
     }
-    expect(pkg.version).toBe('0.2.4')
-    expect(readme).toContain('0.2.0-rc.2')
-    expect(readmeZh).toContain('0.2.0-rc.2')
-    expect(readme).toContain('>=0.2.0-rc.1 <0.2.1')
-    expect(readmeZh).toContain('>=0.2.0-rc.1 <0.2.1')
-    expect(readme).not.toContain('0.2.0-alpha')
-    expect(readmeZh).not.toContain('0.2.0-alpha')
-    expect(readme).not.toContain('0.1.7-rc.2')
-    expect(readmeZh).not.toContain('0.1.7-rc.2')
+    const engines = (pkg as { engines?: Record<string, string> }).engines ?? {}
+    expect(engines.dsh).toBe('>=0.2.1-rc.1 <0.2.2')
+    expect(pkg.version).toBe('0.2.5')
+    expect(readme).toContain('0.2.1-rc.2')
+    expect(readmeZh).toContain('0.2.1-rc.2')
+    expect(readme).toContain('>=0.2.1-rc.1 <0.2.2')
+    expect(readmeZh).toContain('>=0.2.1-rc.1 <0.2.2')
+    expect(readme).not.toContain('0.2.1-alpha')
+    expect(readmeZh).not.toContain('0.2.1-alpha')
+    expect(readme).not.toContain('0.2.0-rc.2')
+    expect(readmeZh).not.toContain('0.2.0-rc.2')
   })
 
   it.each([

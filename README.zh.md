@@ -22,7 +22,7 @@ dsh plugin --profile web add github:aa2246740/dsh-antigravity-oauth
 
 这条官方 CLI 命令只写入 `web` profile，不能修改 Desktop App 的 profile。对于已经运行的 Web Host，请重新打开该 Host 一次，再刷新网页。
 
-包版本 **0.2.3**。需要 DeepSeek Harness **0.2.0-rc.2**（客户端 peer 为 `>=0.2.0-rc.1 <0.2.1`），Node **22.19+**。
+包版本 **0.2.5**。需要 DeepSeek Harness **0.2.1-rc.2**（`engines.dsh` 与客户端 peer 为 `>=0.2.1-rc.1 <0.2.2`），Node **22.19+**。
 
 `dsh` 不在 PATH 时：
 
