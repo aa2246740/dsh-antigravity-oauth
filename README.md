@@ -1,3 +1,10 @@
+> [!WARNING]
+> **DEPRECATED / 已废弃**
+>
+> This plugin is retired and no longer maintained for DeepSeek Harness 0.2.1 and later.
+>
+> 本插件已退役，不再针对 DeepSeek Harness 0.2.1 及后续版本维护。
+
 # dsh-antigravity-oauth
 
 English | [中文](README.zh.md)
