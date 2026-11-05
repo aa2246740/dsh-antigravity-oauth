@@ -1,7 +1,8 @@
 {
   "name": "dsh-antigravity-oauth",
   "description": "Isolated Gemini Cloud Code Assist OAuth for DeepSeek Harness. Independent store. Gemini flash only.",
-  "version": "0.2.4",
+  "version": "0.2.5",
+  "deprecated": "Deprecated and no longer maintained for DeepSeek Harness 0.2.1+.",
   "engines": {
     "node": ">=22.19.0"
   },
